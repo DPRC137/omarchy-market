@@ -1,0 +1,40 @@
+[
+  {
+    "universe": [
+      { "name": "BTC", "szDecimals": 5 },
+      { "name": "ETH", "szDecimals": 4 },
+      { "name": "SOL", "szDecimals": 2 },
+      { "name": "HYPE", "szDecimals": 2 }
+    ]
+  },
+  [
+    {
+      "markPx": "72777.0",
+      "prevDayPx": "69667.0",
+      "dayNtlVlm": "4828844559.79",
+      "midPx": "72778.5",
+      "impactPxs": ["72778.0", "72779.0"]
+    },
+    {
+      "markPx": "2320.4",
+      "prevDayPx": "2286.6",
+      "dayNtlVlm": "2532950577.52",
+      "midPx": "2320.55",
+      "impactPxs": ["2320.5", "2320.6"]
+    },
+    {
+      "markPx": "87.572",
+      "prevDayPx": "86.638",
+      "dayNtlVlm": "233808423.84",
+      "midPx": "87.5815",
+      "impactPxs": ["87.581", "87.5863"]
+    },
+    {
+      "markPx": "74.628",
+      "prevDayPx": "72.69",
+      "dayNtlVlm": "1273288450.96",
+      "midPx": "74.6455",
+      "impactPxs": ["74.6427", "74.6521"]
+    }
+  ]
+]

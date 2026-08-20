@@ -1,0 +1,11 @@
+# Build & System artifacts
+*.log
+*.qslog
+node_modules/
+.DS_Store
+*.swp
+*.bak
+*~
+
+# Test artifacts
+.coverage/

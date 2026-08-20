@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.dpr.omarchy-market",
+  "name": "Omarchy Market",
+  "version": "1.0.0",
+  "author": "DPRC137",
+  "license": "MIT",
+  "description": "Native Omarchy/Quattro financial market ticker and compact market terminal",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "MarketService.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Market",
+    "description": "Live financial market data ticker and terminal",
+    "category": "Finance",
+    "allowMultiple": false,
+    "defaultSection": "left",
+    "defaults": {
+      "multiAsset": false,
+      "speed": 4000
+    },
+    "schema": [
+      {
+        "key": "multiAsset",
+        "type": "boolean",
+        "label": "Show Multiple Assets"
+      },
+      {
+        "key": "speed",
+        "type": "number",
+        "label": "Cycle Speed (ms)",
+        "min": 1000,
+        "max": 10000,
+        "step": 500
+      }
+    ]
+  }
+}
