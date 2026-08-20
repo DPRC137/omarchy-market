@@ -343,21 +343,31 @@ Panel {
             spacing: Style.space(5)
 
             // Binance Row
-            Row {
+            Item {
               width: parent.width
-              spacing: Style.space(6)
-              Rectangle {
-                width: Style.space(8); height: Style.space(8); radius: Style.space(4)
+              height: binanceLeft.implicitHeight
+              
+              Row {
+                id: binanceLeft
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                color: root.binanceQuote ? "#26a69a" : Color.muted
+                spacing: Style.space(6)
+                Rectangle {
+                  width: Style.space(8); height: Style.space(8); radius: Style.space(4)
+                  anchors.verticalCenter: parent.verticalCenter
+                  color: root.binanceQuote ? "#26a69a" : Color.muted
+                }
+                Text { text: "Binance (Spot)"; width: Style.space(110); font.pixelSize: Style.font.caption; color: Color.foreground; anchors.verticalCenter: parent.verticalCenter }
+                Text {
+                  text: root.binanceQuote ? MarketModel.formatPrice(root.binanceQuote.price) : "--"
+                  font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
+                  anchors.verticalCenter: parent.verticalCenter
+                }
               }
-              Text { text: "Binance (Spot)"; width: Style.space(110); font.pixelSize: Style.font.caption; color: Color.foreground }
+              
               Text {
-                text: root.binanceQuote ? MarketModel.formatPrice(root.binanceQuote.price) : "--"
-                font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
-              }
-              Item { width: Math.max(1, parent.width - Style.space(210)); height: 1 }
-              Text {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
                 text: root.binanceQuote ? MarketModel.formatPercentage(root.binanceQuote.change24h) : ""
                 font.pixelSize: Style.font.caption
                 color: (root.binanceQuote && root.binanceQuote.change24h >= 0) ? "#26a69a" : "#ef5350"
@@ -365,21 +375,31 @@ Panel {
             }
 
             // Coinbase Row
-            Row {
+            Item {
               width: parent.width
-              spacing: Style.space(6)
-              Rectangle {
-                width: Style.space(8); height: Style.space(8); radius: Style.space(4)
+              height: coinbaseLeft.implicitHeight
+              
+              Row {
+                id: coinbaseLeft
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                color: root.coinbaseQuote ? "#26a69a" : Color.muted
+                spacing: Style.space(6)
+                Rectangle {
+                  width: Style.space(8); height: Style.space(8); radius: Style.space(4)
+                  anchors.verticalCenter: parent.verticalCenter
+                  color: root.coinbaseQuote ? "#26a69a" : Color.muted
+                }
+                Text { text: "Coinbase (Spot)"; width: Style.space(110); font.pixelSize: Style.font.caption; color: Color.foreground; anchors.verticalCenter: parent.verticalCenter }
+                Text {
+                  text: root.coinbaseQuote ? MarketModel.formatPrice(root.coinbaseQuote.price) : "--"
+                  font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
+                  anchors.verticalCenter: parent.verticalCenter
+                }
               }
-              Text { text: "Coinbase (Spot)"; width: Style.space(110); font.pixelSize: Style.font.caption; color: Color.foreground }
+              
               Text {
-                text: root.coinbaseQuote ? MarketModel.formatPrice(root.coinbaseQuote.price) : "--"
-                font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
-              }
-              Item { width: Math.max(1, parent.width - Style.space(210)); height: 1 }
-              Text {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
                 text: root.coinbaseQuote ? MarketModel.formatPercentage(root.coinbaseQuote.change24h) : ""
                 font.pixelSize: Style.font.caption
                 color: (root.coinbaseQuote && root.coinbaseQuote.change24h >= 0) ? "#26a69a" : "#ef5350"
@@ -387,21 +407,31 @@ Panel {
             }
 
             // Hyperliquid Row
-            Row {
+            Item {
               width: parent.width
-              spacing: Style.space(6)
-              Rectangle {
-                width: Style.space(8); height: Style.space(8); radius: Style.space(4)
+              height: hyperliquidLeft.implicitHeight
+              
+              Row {
+                id: hyperliquidLeft
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                color: root.hyperliquidQuote ? "#26a69a" : Color.muted
+                spacing: Style.space(6)
+                Rectangle {
+                  width: Style.space(8); height: Style.space(8); radius: Style.space(4)
+                  anchors.verticalCenter: parent.verticalCenter
+                  color: root.hyperliquidQuote ? "#26a69a" : Color.muted
+                }
+                Text { text: "Hyperliquid (Perp)"; width: Style.space(110); font.pixelSize: Style.font.caption; color: Color.foreground; anchors.verticalCenter: parent.verticalCenter }
+                Text {
+                  text: root.hyperliquidQuote ? MarketModel.formatPrice(root.hyperliquidQuote.price) : "--"
+                  font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
+                  anchors.verticalCenter: parent.verticalCenter
+                }
               }
-              Text { text: "Hyperliquid (Perp)"; width: Style.space(110); font.pixelSize: Style.font.caption; color: Color.foreground }
+              
               Text {
-                text: root.hyperliquidQuote ? MarketModel.formatPrice(root.hyperliquidQuote.price) : "--"
-                font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
-              }
-              Item { width: Math.max(1, parent.width - Style.space(210)); height: 1 }
-              Text {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
                 text: root.hyperliquidQuote ? MarketModel.formatPercentage(root.hyperliquidQuote.change24h) : ""
                 font.pixelSize: Style.font.caption
                 color: (root.hyperliquidQuote && root.hyperliquidQuote.change24h >= 0) ? "#26a69a" : "#ef5350"
