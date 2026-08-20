@@ -19,7 +19,7 @@
     "description": "Live financial market data ticker and terminal",
     "category": "Finance",
     "allowMultiple": false,
-    "defaultSection": "right",
+    "defaultSection": "center",
     "defaults": {
       "multiAsset": false,
       "speed": 4000
