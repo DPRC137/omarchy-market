@@ -60,7 +60,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: Style.space(360)
-    contentHeight: contentColumn.implicitHeight + Style.space(16)
+    contentHeight: contentColumn.implicitHeight + keyboardPanel.padding * 2 + Style.space(8)
 
     PanelKeyCatcher {
       id: keyCatcher
