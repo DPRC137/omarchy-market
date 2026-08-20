@@ -60,7 +60,8 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: Style.space(360)
-    contentHeight: contentColumn.implicitHeight + keyboardPanel.padding * 2 + Style.space(8)
+    contentHeight: contentColumn.implicitHeight + Style.space(48)
+    Component.onCompleted: console.log("KeyboardPanel padding is: " + keyboardPanel.padding + ", contentHeight is: " + contentHeight)
 
     PanelKeyCatcher {
       id: keyCatcher
