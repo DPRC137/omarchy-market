@@ -1,13 +1,9 @@
-// MarketModel.js - Core data normalization, instrument definitions, and formatting for Omarchy Market
+// MarketModel.js - Core data normalization, instrument catalog, and structured persistence for Omarchy Market
 
 .pragma library
 
-var ASSET_DEFINITIONS = {
-  "BTC": { name: "Bitcoin", symbol: "BTC", baseCurrency: "USD", precision: 2, icon: "₿" },
-  "ETH": { name: "Ethereum", symbol: "ETH", baseCurrency: "USD", precision: 2, icon: "Ξ" },
-  "SOL": { name: "Solana", symbol: "SOL", baseCurrency: "USD", precision: 2, icon: "◎" },
-  "HYPE": { name: "Hyperliquid", symbol: "HYPE", baseCurrency: "USD", precision: 3, icon: "⚡" }
-};
+var SCHEMA_VERSION = 1;
+var MAX_WATCHLIST_SIZE = 20;
 
 var INSTRUMENT_TYPES = {
   SPOT_LAST: "SPOT_LAST",
@@ -17,25 +13,650 @@ var INSTRUMENT_TYPES = {
   PERP_MARK: "PERP_MARK"
 };
 
-var DEFAULT_ASSETS = ["BTC", "ETH", "SOL", "HYPE"];
-
 var FRESHNESS_THRESHOLDS = {
   LIVE_MS: 15000,    // < 15s is LIVE
   STALE_MS: 60000    // 15s - 60s is STALE, > 60s is OFFLINE
 };
 
+// Comprehensive lightweight instrument catalog built from public provider specifications
+var INSTRUMENT_CATALOG = [
+  {
+    asset: "BTC",
+    name: "Bitcoin",
+    instrument: "BTC_USD_SPOT",
+    precision: 2,
+    aliases: ["btc", "bitcoin", "xbt", "btcusd", "btcusdt"],
+    providers: { binance: "BTCUSDT", coinbase: "BTC-USD", hyperliquid: "BTC" }
+  },
+  {
+    asset: "ETH",
+    name: "Ethereum",
+    instrument: "ETH_USD_SPOT",
+    precision: 2,
+    aliases: ["eth", "ethereum", "ether", "ethusd", "ethusdt"],
+    providers: { binance: "ETHUSDT", coinbase: "ETH-USD", hyperliquid: "ETH" }
+  },
+  {
+    asset: "SOL",
+    name: "Solana",
+    instrument: "SOL_USD_SPOT",
+    precision: 2,
+    aliases: ["sol", "solana", "solusd", "solusdt"],
+    providers: { binance: "SOLUSDT", coinbase: "SOL-USD", hyperliquid: "SOL" }
+  },
+  {
+    asset: "HYPE",
+    name: "Hyperliquid",
+    instrument: "HYPE_USD_PERP",
+    precision: 3,
+    aliases: ["hype", "hyperliquid"],
+    providers: { hyperliquid: "HYPE" }
+  },
+  {
+    asset: "DOGE",
+    name: "Dogecoin",
+    instrument: "DOGE_USD_SPOT",
+    precision: 4,
+    aliases: ["doge", "dogecoin", "dogeusd", "dogeusdt"],
+    providers: { binance: "DOGEUSDT", coinbase: "DOGE-USD", hyperliquid: "DOGE" }
+  },
+  {
+    asset: "XRP",
+    name: "XRP",
+    instrument: "XRP_USD_SPOT",
+    precision: 4,
+    aliases: ["xrp", "ripple", "xrpusd", "xrpusdt"],
+    providers: { binance: "XRPUSDT", coinbase: "XRP-USD", hyperliquid: "XRP" }
+  },
+  {
+    asset: "ADA",
+    name: "Cardano",
+    instrument: "ADA_USD_SPOT",
+    precision: 4,
+    aliases: ["ada", "cardano", "adausd", "adausdt"],
+    providers: { binance: "ADAUSDT", coinbase: "ADA-USD", hyperliquid: "ADA" }
+  },
+  {
+    asset: "AVAX",
+    name: "Avalanche",
+    instrument: "AVAX_USD_SPOT",
+    precision: 2,
+    aliases: ["avax", "avalanche", "avaxusd", "avaxusdt"],
+    providers: { binance: "AVAXUSDT", coinbase: "AVAX-USD", hyperliquid: "AVAX" }
+  },
+  {
+    asset: "SUI",
+    name: "Sui",
+    instrument: "SUI_USD_SPOT",
+    precision: 3,
+    aliases: ["sui", "suiusd", "suiusdt"],
+    providers: { binance: "SUIUSDT", coinbase: "SUI-USD", hyperliquid: "SUI" }
+  },
+  {
+    asset: "LINK",
+    name: "Chainlink",
+    instrument: "LINK_USD_SPOT",
+    precision: 2,
+    aliases: ["link", "chainlink", "linkusd", "linkusdt"],
+    providers: { binance: "LINKUSDT", coinbase: "LINK-USD", hyperliquid: "LINK" }
+  },
+  {
+    asset: "NEAR",
+    name: "NEAR Protocol",
+    instrument: "NEAR_USD_SPOT",
+    precision: 3,
+    aliases: ["near", "near protocol", "nearusd", "nearusdt"],
+    providers: { binance: "NEARUSDT", coinbase: "NEAR-USD", hyperliquid: "NEAR" }
+  },
+  {
+    asset: "BNB",
+    name: "BNB",
+    instrument: "BNB_USD_SPOT",
+    precision: 2,
+    aliases: ["bnb", "binance coin", "bnbusdt"],
+    providers: { binance: "BNBUSDT", hyperliquid: "BNB" }
+  },
+  {
+    asset: "DOT",
+    name: "Polkadot",
+    instrument: "DOT_USD_SPOT",
+    precision: 3,
+    aliases: ["dot", "polkadot", "dotusd", "dotusdt"],
+    providers: { binance: "DOTUSDT", coinbase: "DOT-USD", hyperliquid: "DOT" }
+  },
+  {
+    asset: "LTC",
+    name: "Litecoin",
+    instrument: "LTC_USD_SPOT",
+    precision: 2,
+    aliases: ["ltc", "litecoin", "ltcusd", "ltcusdt"],
+    providers: { binance: "LTCUSDT", coinbase: "LTC-USD", hyperliquid: "LTC" }
+  },
+  {
+    asset: "BCH",
+    name: "Bitcoin Cash",
+    instrument: "BCH_USD_SPOT",
+    precision: 2,
+    aliases: ["bch", "bitcoin cash", "bchusd", "bchusdt"],
+    providers: { binance: "BCHUSDT", coinbase: "BCH-USD", hyperliquid: "BCH" }
+  },
+  {
+    asset: "UNI",
+    name: "Uniswap",
+    instrument: "UNI_USD_SPOT",
+    precision: 3,
+    aliases: ["uni", "uniswap", "uniusd", "uniusdt"],
+    providers: { binance: "UNIUSDT", coinbase: "UNI-USD", hyperliquid: "UNI" }
+  },
+  {
+    asset: "APT",
+    name: "Aptos",
+    instrument: "APT_USD_SPOT",
+    precision: 3,
+    aliases: ["apt", "aptos", "aptusd", "aptusdt"],
+    providers: { binance: "APTUSDT", coinbase: "APT-USD", hyperliquid: "APT" }
+  },
+  {
+    asset: "PEPE",
+    name: "Pepe",
+    instrument: "PEPE_USD_SPOT",
+    precision: 8,
+    aliases: ["pepe", "pepeusd", "pepeusdt"],
+    providers: { binance: "PEPEUSDT", hyperliquid: "PEPE" }
+  },
+  {
+    asset: "SHIB",
+    name: "Shiba Inu",
+    instrument: "SHIB_USD_SPOT",
+    precision: 6,
+    aliases: ["shib", "shiba", "shiba inu", "shibusd", "shibusdt"],
+    providers: { binance: "SHIBUSDT", coinbase: "SHIB-USD", hyperliquid: "SHIB" }
+  },
+  {
+    asset: "ARB",
+    name: "Arbitrum",
+    instrument: "ARB_USD_SPOT",
+    precision: 4,
+    aliases: ["arb", "arbitrum", "arbusd", "arbusdt"],
+    providers: { binance: "ARBUSDT", coinbase: "ARB-USD", hyperliquid: "ARB" }
+  },
+  {
+    asset: "OP",
+    name: "Optimism",
+    instrument: "OP_USD_SPOT",
+    precision: 4,
+    aliases: ["op", "optimism", "opusd", "opusdt"],
+    providers: { binance: "OPUSDT", coinbase: "OP-USD", hyperliquid: "OP" }
+  },
+  {
+    asset: "RENDER",
+    name: "Render",
+    instrument: "RENDER_USD_SPOT",
+    precision: 3,
+    aliases: ["render", "rndr", "renderusd", "renderusdt"],
+    providers: { binance: "RENDERUSDT", coinbase: "RENDER-USD", hyperliquid: "RENDER" }
+  },
+  {
+    asset: "AAVE",
+    name: "Aave",
+    instrument: "AAVE_USD_SPOT",
+    precision: 2,
+    aliases: ["aave", "aaveusd", "aaveusdt"],
+    providers: { binance: "AAVEUSDT", coinbase: "AAVE-USD", hyperliquid: "AAVE" }
+  },
+  {
+    asset: "POL",
+    name: "Polygon",
+    instrument: "POL_USD_SPOT",
+    precision: 4,
+    aliases: ["pol", "polygon", "matic", "polusd", "polusdt"],
+    providers: { binance: "POLUSDT", coinbase: "POL-USD", hyperliquid: "POL" }
+  },
+  {
+    asset: "ATOM",
+    name: "Cosmos",
+    instrument: "ATOM_USD_SPOT",
+    precision: 3,
+    aliases: ["atom", "cosmos", "atomusd", "atomusdt"],
+    providers: { binance: "ATOMUSDT", coinbase: "ATOM-USD", hyperliquid: "ATOM" }
+  },
+  {
+    asset: "INJ",
+    name: "Injective",
+    instrument: "INJ_USD_SPOT",
+    precision: 3,
+    aliases: ["inj", "injective", "injusd", "injusdt"],
+    providers: { binance: "INJUSDT", coinbase: "INJ-USD", hyperliquid: "INJ" }
+  },
+  {
+    asset: "FIL",
+    name: "Filecoin",
+    instrument: "FIL_USD_SPOT",
+    precision: 3,
+    aliases: ["fil", "filecoin", "filusd", "filusdt"],
+    providers: { binance: "FILUSDT", coinbase: "FIL-USD", hyperliquid: "FIL" }
+  },
+  {
+    asset: "TIA",
+    name: "Celestia",
+    instrument: "TIA_USD_SPOT",
+    precision: 3,
+    aliases: ["tia", "celestia", "tiausd", "tiausdt"],
+    providers: { binance: "TIAUSDT", coinbase: "TIA-USD", hyperliquid: "TIA" }
+  },
+  {
+    asset: "SEI",
+    name: "Sei",
+    instrument: "SEI_USD_SPOT",
+    precision: 4,
+    aliases: ["sei", "seiusd", "seiusdt"],
+    providers: { binance: "SEIUSDT", coinbase: "SEI-USD", hyperliquid: "SEI" }
+  },
+  {
+    asset: "XLM",
+    name: "Stellar",
+    instrument: "XLM_USD_SPOT",
+    precision: 4,
+    aliases: ["xlm", "stellar", "lumens", "xlmusd", "xlmusdt"],
+    providers: { binance: "XLMUSDT", coinbase: "XLM-USD", hyperliquid: "XLM" }
+  },
+  {
+    asset: "ALGO",
+    name: "Algorand",
+    instrument: "ALGO_USD_SPOT",
+    precision: 4,
+    aliases: ["algo", "algorand", "algousd", "algousdt"],
+    providers: { binance: "ALGOUSDT", coinbase: "ALGO-USD", hyperliquid: "ALGO" }
+  },
+  {
+    asset: "ICP",
+    name: "Internet Computer",
+    instrument: "ICP_USD_SPOT",
+    precision: 3,
+    aliases: ["icp", "internet computer", "icpusd", "icpusdt"],
+    providers: { binance: "ICPUSDT", coinbase: "ICP-USD", hyperliquid: "ICP" }
+  },
+  {
+    asset: "KAS",
+    name: "Kaspa",
+    instrument: "KAS_USD_SPOT",
+    precision: 4,
+    aliases: ["kas", "kaspa", "kasusdt"],
+    providers: { binance: "KASUSDT", hyperliquid: "KAS" }
+  },
+  {
+    asset: "CRV",
+    name: "Curve DAO",
+    instrument: "CRV_USD_SPOT",
+    precision: 4,
+    aliases: ["crv", "curve", "crvusd", "crvusdt"],
+    providers: { binance: "CRVUSDT", coinbase: "CRV-USD", hyperliquid: "CRV" }
+  },
+  {
+    asset: "ENA",
+    name: "Ethena",
+    instrument: "ENA_USD_SPOT",
+    precision: 4,
+    aliases: ["ena", "ethena", "enausd", "enausdt"],
+    providers: { binance: "ENAUSDT", coinbase: "ENA-USD", hyperliquid: "ENA" }
+  },
+  {
+    asset: "WLD",
+    name: "Worldcoin",
+    instrument: "WLD_USD_SPOT",
+    precision: 3,
+    aliases: ["wld", "worldcoin", "wldusdt"],
+    providers: { binance: "WLDUSDT", hyperliquid: "WLD" }
+  },
+  {
+    asset: "ONDO",
+    name: "Ondo Finance",
+    instrument: "ONDO_USD_SPOT",
+    precision: 4,
+    aliases: ["ondo", "ondousd", "ondousdt"],
+    providers: { binance: "ONDOUSDT", coinbase: "ONDO-USD", hyperliquid: "ONDO" }
+  },
+  {
+    asset: "TAO",
+    name: "Bittensor",
+    instrument: "TAO_USD_SPOT",
+    precision: 2,
+    aliases: ["tao", "bittensor", "taousdt"],
+    providers: { binance: "TAOUSDT", hyperliquid: "TAO" }
+  },
+  {
+    asset: "FET",
+    name: "Artificial Superintelligence",
+    instrument: "FET_USD_SPOT",
+    precision: 4,
+    aliases: ["fet", "fetch", "fetch.ai", "asi", "fetusd", "fetusdt"],
+    providers: { binance: "FETUSDT", coinbase: "FET-USD", hyperliquid: "FET" }
+  }
+];
+
+// Build fast lookup index by asset
+var CATALOG_BY_ASSET = {};
+for (var i = 0; i < INSTRUMENT_CATALOG.length; i++) {
+  var item = INSTRUMENT_CATALOG[i];
+  CATALOG_BY_ASSET[item.asset] = item;
+}
+
+// Backward-compatible ASSET_DEFINITIONS dictionary (no emojis/logos per user request)
+var ASSET_DEFINITIONS = {};
+for (var a in CATALOG_BY_ASSET) {
+  var c = CATALOG_BY_ASSET[a];
+  ASSET_DEFINITIONS[a] = {
+    name: c.name,
+    symbol: c.asset,
+    baseCurrency: "USD",
+    precision: c.precision,
+    icon: ""
+  };
+}
+
+var DEFAULT_ASSETS = ["BTC", "ETH", "SOL", "HYPE"];
+
+function getCatalogItem(assetOrQuery) {
+  if (!assetOrQuery) return null;
+  var q = String(assetOrQuery).trim();
+  var upper = q.toUpperCase();
+  if (CATALOG_BY_ASSET[upper]) return CATALOG_BY_ASSET[upper];
+
+  var lower = q.toLowerCase();
+  for (var i = 0; i < INSTRUMENT_CATALOG.length; i++) {
+    var item = INSTRUMENT_CATALOG[i];
+    if (item.asset.toLowerCase() === lower || item.name.toLowerCase() === lower) {
+      return item;
+    }
+    if (item.aliases && Array.isArray(item.aliases)) {
+      for (var k = 0; k < item.aliases.length; k++) {
+        if (item.aliases[k] === lower) return item;
+      }
+    }
+  }
+  return null;
+}
+
+function searchCatalog(query) {
+  if (!query) return [];
+  var raw = String(query).trim().toLowerCase();
+  if (raw.length === 0) return [];
+
+  var exactMatches = [];
+  var prefixMatches = [];
+  var substringMatches = [];
+
+  for (var i = 0; i < INSTRUMENT_CATALOG.length; i++) {
+    var item = INSTRUMENT_CATALOG[i];
+    var symLower = item.asset.toLowerCase();
+    var nameLower = item.name.toLowerCase();
+
+    // Check exact matches
+    if (symLower === raw || nameLower === raw) {
+      exactMatches.push(item);
+      continue;
+    }
+
+    var isAliasExact = false;
+    if (item.aliases) {
+      for (var a = 0; a < item.aliases.length; a++) {
+        if (item.aliases[a] === raw) {
+          exactMatches.push(item);
+          isAliasExact = true;
+          break;
+        }
+      }
+    }
+    if (isAliasExact) continue;
+
+    // Check prefix matches
+    if (symLower.indexOf(raw) === 0 || nameLower.indexOf(raw) === 0) {
+      prefixMatches.push(item);
+      continue;
+    }
+
+    var isAliasPrefix = false;
+    if (item.aliases) {
+      for (var b = 0; b < item.aliases.length; b++) {
+        if (item.aliases[b].indexOf(raw) === 0) {
+          prefixMatches.push(item);
+          isAliasPrefix = true;
+          break;
+        }
+      }
+    }
+    if (isAliasPrefix) continue;
+
+    // Check substring matches
+    if (symLower.indexOf(raw) !== -1 || nameLower.indexOf(raw) !== -1) {
+      substringMatches.push(item);
+      continue;
+    }
+
+    if (item.aliases) {
+      for (var c = 0; c < item.aliases.length; c++) {
+        if (item.aliases[c].indexOf(raw) !== -1) {
+          substringMatches.push(item);
+          break;
+        }
+      }
+    }
+  }
+
+  var combined = exactMatches.concat(prefixMatches).concat(substringMatches);
+  return combined.slice(0, 8);
+}
+
+function isValidMarket(assetOrQuery) {
+  return getCatalogItem(assetOrQuery) !== null;
+}
+
+// Watchlist structured persistence & migration
+
+function createDefaultWatchlist() {
+  var defaultItems = [];
+  for (var i = 0; i < DEFAULT_ASSETS.length; i++) {
+    var item = getCatalogItem(DEFAULT_ASSETS[i]);
+    if (item) {
+      defaultItems.push({
+        asset: item.asset,
+        name: item.name,
+        instrument: item.instrument,
+        precision: item.precision,
+        providers: Object.assign({}, item.providers)
+      });
+    }
+  }
+  return {
+    version: SCHEMA_VERSION,
+    items: defaultItems
+  };
+}
+
+function serializeWatchlist(watchlistObj) {
+  if (!watchlistObj || !Array.isArray(watchlistObj.items)) {
+    return JSON.stringify(createDefaultWatchlist());
+  }
+  return JSON.stringify(watchlistObj);
+}
+
+function deserializeWatchlist(rawString) {
+  if (!rawString || typeof rawString !== "string" || !rawString.trim()) {
+    return createDefaultWatchlist();
+  }
+
+  var parsed;
+  try {
+    parsed = JSON.parse(rawString);
+  } catch (e) {
+    console.warn("deserializeWatchlist: Malformed JSON, restoring default watchlist", e);
+    return createDefaultWatchlist();
+  }
+
+  // Handle migration from legacy bare string array: ["BTC", "ETH", "SOL", "HYPE"]
+  if (Array.isArray(parsed)) {
+    var migratedItems = [];
+    var seenAssets = {};
+    for (var i = 0; i < parsed.length; i++) {
+      var sym = String(parsed[i] || "").trim().toUpperCase();
+      if (!sym || seenAssets[sym]) continue;
+      var cat = getCatalogItem(sym);
+      if (cat) {
+        seenAssets[sym] = true;
+        migratedItems.push({
+          asset: cat.asset,
+          name: cat.name,
+          instrument: cat.instrument,
+          precision: cat.precision,
+          providers: Object.assign({}, cat.providers)
+        });
+      }
+      if (migratedItems.length >= MAX_WATCHLIST_SIZE) break;
+    }
+    if (migratedItems.length === 0) return createDefaultWatchlist();
+    return {
+      version: SCHEMA_VERSION,
+      items: migratedItems
+    };
+  }
+
+  // Handle structured watchlist object
+  if (parsed && typeof parsed === "object") {
+    var items = Array.isArray(parsed.items) ? parsed.items : [];
+    var cleanItems = [];
+    var seen = {};
+
+    for (var k = 0; k < items.length; k++) {
+      var it = items[k];
+      if (!it || !it.asset) continue;
+      var assetKey = String(it.asset).trim().toUpperCase();
+      if (!assetKey || seen[assetKey]) continue;
+
+      var catalogEntry = getCatalogItem(assetKey);
+      if (!catalogEntry) continue; // Reject invalid/unsupported markets
+
+      seen[assetKey] = true;
+      cleanItems.push({
+        asset: catalogEntry.asset,
+        name: it.name || catalogEntry.name,
+        instrument: catalogEntry.instrument,
+        precision: catalogEntry.precision,
+        providers: Object.assign({}, catalogEntry.providers, it.providers || {})
+      });
+
+      if (cleanItems.length >= MAX_WATCHLIST_SIZE) break;
+    }
+
+    if (cleanItems.length === 0) {
+      return createDefaultWatchlist();
+    }
+
+    return {
+      version: typeof parsed.version === "number" ? parsed.version : SCHEMA_VERSION,
+      items: cleanItems
+    };
+  }
+
+  return createDefaultWatchlist();
+}
+
+function addWatchlistMarket(watchlistObj, assetOrItem) {
+  var current = (watchlistObj && Array.isArray(watchlistObj.items)) ? watchlistObj : createDefaultWatchlist();
+  if (current.items.length >= MAX_WATCHLIST_SIZE) {
+    return { success: false, reason: "MAX_LIMIT", watchlist: current };
+  }
+
+  var targetAsset = (typeof assetOrItem === "object" && assetOrItem.asset) ? assetOrItem.asset : assetOrItem;
+  var catalogItem = getCatalogItem(targetAsset);
+  if (!catalogItem) {
+    return { success: false, reason: "INVALID_MARKET", watchlist: current };
+  }
+
+  // Check duplicates
+  for (var i = 0; i < current.items.length; i++) {
+    if (current.items[i].asset === catalogItem.asset) {
+      return { success: false, reason: "DUPLICATE", watchlist: current };
+    }
+  }
+
+  var nextItems = current.items.slice();
+  nextItems.push({
+    asset: catalogItem.asset,
+    name: catalogItem.name,
+    instrument: catalogItem.instrument,
+    precision: catalogItem.precision,
+    providers: Object.assign({}, catalogItem.providers)
+  });
+
+  return {
+    success: true,
+    watchlist: {
+      version: SCHEMA_VERSION,
+      items: nextItems
+    }
+  };
+}
+
+function removeWatchlistMarket(watchlistObj, asset) {
+  var current = (watchlistObj && Array.isArray(watchlistObj.items)) ? watchlistObj : createDefaultWatchlist();
+  var sym = String(asset || "").trim().toUpperCase();
+
+  if (current.items.length <= 1) {
+    return { success: false, reason: "MIN_LIMIT", watchlist: current };
+  }
+
+  var filtered = current.items.filter(function(it) {
+    return it.asset !== sym;
+  });
+
+  if (filtered.length === current.items.length) {
+    return { success: false, reason: "NOT_FOUND", watchlist: current };
+  }
+
+  return {
+    success: true,
+    watchlist: {
+      version: SCHEMA_VERSION,
+      items: filtered
+    }
+  };
+}
+
+function reorderWatchlistMarket(watchlistObj, fromIndex, toIndex) {
+  var current = (watchlistObj && Array.isArray(watchlistObj.items)) ? watchlistObj : createDefaultWatchlist();
+  var items = current.items.slice();
+
+  if (fromIndex < 0 || fromIndex >= items.length || toIndex < 0 || toIndex >= items.length) {
+    return { success: false, reason: "OUT_OF_BOUNDS", watchlist: current };
+  }
+  if (fromIndex === toIndex) {
+    return { success: true, watchlist: current };
+  }
+
+  var moved = items.splice(fromIndex, 1)[0];
+  items.splice(toIndex, 0, moved);
+
+  return {
+    success: true,
+    watchlist: {
+      version: SCHEMA_VERSION,
+      items: items
+    }
+  };
+}
+
 function createEmptyQuote(asset, provider) {
-  var def = ASSET_DEFINITIONS[asset] || { name: asset, symbol: asset, precision: 2, icon: "" };
+  var cat = getCatalogItem(asset) || { name: asset, symbol: asset, precision: 2, icon: "" };
   var prov = provider || "aggregate";
-  var inst = (asset === "HYPE" || prov === "hyperliquid") ? (asset + "_USD_PERP") : (asset + "_USD_SPOT");
-  var pType = (asset === "HYPE" || prov === "hyperliquid") ? INSTRUMENT_TYPES.PERP_MID : INSTRUMENT_TYPES.SPOT_LAST;
+  var inst = (asset === "HYPE" || prov === "hyperliquid" || (cat.instrument && cat.instrument.indexOf("PERP") !== -1)) ? (asset + "_USD_PERP") : (asset + "_USD_SPOT");
+  var pType = (asset === "HYPE" || prov === "hyperliquid" || (cat.instrument && cat.instrument.indexOf("PERP") !== -1)) ? INSTRUMENT_TYPES.PERP_MID : INSTRUMENT_TYPES.SPOT_LAST;
 
   return {
     asset: asset,
     instrument: inst,
     priceType: pType,
-    name: def.name,
-    icon: def.icon,
+    name: cat.name,
+    icon: "",
     symbol: asset + "/USD",
     provider: prov,
     exchange: providerDisplayName(prov),
@@ -70,16 +691,31 @@ function getFreshness(receivedTimestamp, now) {
   return "OFFLINE";
 }
 
+// Dynamic symbol inference from provider ticker strings
+function inferAssetFromBinanceSymbol(symbol) {
+  if (!symbol) return "";
+  var s = String(symbol).toUpperCase();
+  if (s.endsWith("USDT")) return s.slice(0, -4);
+  if (s.endsWith("USD")) return s.slice(0, -3);
+  if (s.endsWith("BUSD")) return s.slice(0, -4);
+  return s;
+}
+
+function inferAssetFromCoinbaseProduct(productId) {
+  if (!productId) return "";
+  var parts = String(productId).toUpperCase().split("-");
+  return parts[0] || "";
+}
+
 // Normalizes Binance 24hr ticker websocket or REST payload
 function normalizeBinanceTicker(data, now) {
   if (!data) return null;
   var symbol = String(data.s || "");
-  var asset = "";
-  if (symbol.indexOf("BTC") === 0) asset = "BTC";
-  else if (symbol.indexOf("ETH") === 0) asset = "ETH";
-  else if (symbol.indexOf("SOL") === 0) asset = "SOL";
-  else if (symbol.indexOf("HYPE") === 0) asset = "HYPE";
-  else return null;
+  var asset = inferAssetFromBinanceSymbol(symbol);
+  if (!asset) return null;
+
+  var cat = getCatalogItem(asset);
+  if (!cat) return null;
 
   var price = parseFloat(data.c || 0);
   var change24h = parseFloat(data.P || 0);
@@ -93,10 +729,10 @@ function normalizeBinanceTicker(data, now) {
 
   return {
     asset: asset,
-    instrument: asset + "_USD_SPOT",
+    instrument: cat.instrument,
     priceType: INSTRUMENT_TYPES.SPOT_LAST,
-    name: (ASSET_DEFINITIONS[asset] && ASSET_DEFINITIONS[asset].name) || asset,
-    icon: (ASSET_DEFINITIONS[asset] && ASSET_DEFINITIONS[asset].icon) || "",
+    name: cat.name,
+    icon: "",
     symbol: asset + "/USD",
     provider: "binance",
     exchange: "Binance",
@@ -118,12 +754,11 @@ function normalizeBinanceTicker(data, now) {
 function normalizeCoinbaseTicker(data, now) {
   if (!data || (data.type && data.type !== "ticker")) return null;
   var prod = String(data.product_id || "");
-  var asset = "";
-  if (prod.indexOf("BTC") === 0) asset = "BTC";
-  else if (prod.indexOf("ETH") === 0) asset = "ETH";
-  else if (prod.indexOf("SOL") === 0) asset = "SOL";
-  else if (prod.indexOf("HYPE") === 0) asset = "HYPE";
-  else return null;
+  var asset = inferAssetFromCoinbaseProduct(prod);
+  if (!asset) return null;
+
+  var cat = getCatalogItem(asset);
+  if (!cat) return null;
 
   var price = parseFloat(data.price || 0);
   var open24h = parseFloat(data.open_24h || 0);
@@ -142,10 +777,10 @@ function normalizeCoinbaseTicker(data, now) {
 
   return {
     asset: asset,
-    instrument: asset + "_USD_SPOT",
+    instrument: cat.instrument,
     priceType: INSTRUMENT_TYPES.SPOT_LAST,
-    name: (ASSET_DEFINITIONS[asset] && ASSET_DEFINITIONS[asset].name) || asset,
-    icon: (ASSET_DEFINITIONS[asset] && ASSET_DEFINITIONS[asset].icon) || "",
+    name: cat.name,
+    icon: "",
     symbol: asset + "/USD",
     provider: "coinbase",
     exchange: "Coinbase",
@@ -183,6 +818,7 @@ function normalizeHyperliquidMeta(data, targetAssets, now) {
     var ctx = ctxs[i];
     if (!ctx) continue;
 
+    var cat = getCatalogItem(name);
     var price = parseFloat(ctx.markPx || ctx.midPx || 0);
     var prevDay = parseFloat(ctx.prevDayPx || 0);
     var change24h = 0;
@@ -197,8 +833,8 @@ function normalizeHyperliquidMeta(data, targetAssets, now) {
       asset: name,
       instrument: name + "_USD_PERP",
       priceType: INSTRUMENT_TYPES.PERP_MID,
-      name: (ASSET_DEFINITIONS[name] && ASSET_DEFINITIONS[name].name) || name,
-      icon: (ASSET_DEFINITIONS[name] && ASSET_DEFINITIONS[name].icon) || "",
+      name: cat ? cat.name : name,
+      icon: "",
       symbol: name + "/USD",
       provider: "hyperliquid",
       exchange: "Hyperliquid",
@@ -221,12 +857,15 @@ function normalizeHyperliquidMeta(data, targetAssets, now) {
 
 // Explicit Reference Price Calculation
 function calculateReferenceQuote(asset, quotesByProvider, now) {
-  if (asset === "HYPE") {
+  var cat = getCatalogItem(asset);
+  var isPerpOnly = (asset === "HYPE" || (cat && cat.instrument && cat.instrument.indexOf("PERP") !== -1));
+
+  if (isPerpOnly) {
     var hlQuote = quotesByProvider["hyperliquid"];
     if (hlQuote && hlQuote.price > 0 && getFreshness(hlQuote.receivedTimestamp, now) !== "OFFLINE") {
       return hlQuote;
     }
-    return createEmptyQuote("HYPE", "hyperliquid");
+    return createEmptyQuote(asset, "hyperliquid");
   }
 
   // Combine compatible spot providers (Binance + Coinbase)
@@ -274,14 +913,14 @@ function calculateReferenceQuote(asset, quotesByProvider, now) {
 
   var avgPrice = totalPrice / spotQuotes.length;
   var avgChange = totalChange / spotQuotes.length;
-  var def = ASSET_DEFINITIONS[asset] || { name: asset, icon: "" };
+  var name = cat ? cat.name : asset;
 
   return {
     asset: asset,
     instrument: asset + "_USD_SPOT",
     priceType: INSTRUMENT_TYPES.SPOT_LAST,
-    name: def.name,
-    icon: def.icon,
+    name: name,
+    icon: "",
     symbol: asset + "/USD",
     provider: "aggregate",
     exchange: "Reference Spot (" + spotQuotes.length + " feeds)",
@@ -299,11 +938,22 @@ function calculateReferenceQuote(asset, quotesByProvider, now) {
   };
 }
 
-// Strict and deterministic price formatting (prevents floating point precision overflow like $2319.1899999999996)
+// Strict and deterministic price formatting
 function formatPrice(value, precision) {
   var num = Number(value);
   if (isNaN(num) || num === 0) return "$0.00";
-  var p = precision !== undefined ? precision : (num >= 1 ? 2 : 4);
+  var p;
+  if (precision !== undefined) {
+    p = precision;
+  } else if (num >= 1000) {
+    p = 2;
+  } else if (num >= 1) {
+    p = 2;
+  } else if (num >= 0.0001) {
+    p = 4;
+  } else {
+    p = 6;
+  }
   var fixed = num.toFixed(p);
   var parts = fixed.split(".");
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -324,6 +974,9 @@ function formatCompactPrice(value) {
   }
   if (num >= 1) {
     return "$" + num.toFixed(2);
+  }
+  if (num >= 0.01) {
+    return "$" + num.toFixed(3);
   }
   return "$" + num.toFixed(4);
 }
@@ -349,3 +1002,4 @@ function formatVolume(value) {
   }
   return "$" + num.toFixed(0);
 }
+

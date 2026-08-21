@@ -1,4 +1,4 @@
-# Omarchy Market (`io.github.dpr.omarchy-market`) v1.0.0
+# Omarchy Market (`io.github.dpr.omarchy-market`) v1.1.0
 
 A production-quality, native financial market data ticker and compact terminal plugin for **Omarchy Quattro**.
 
@@ -8,26 +8,36 @@ A production-quality, native financial market data ticker and compact terminal p
 
 ## Features
 
-- **Live Streaming Ticker**: Displays real-time crypto prices directly on the Omarchy bar (`BTC`, `ETH`, `SOL`, `HYPE`).
-- **Multi-Exchange Feeds**:
-  - **Binance**: Public spot ticker WebSocket stream & REST klines.
-  - **Coinbase**: Coinbase Exchange public ticker WebSocket stream & REST stats.
-  - **Hyperliquid**: Real-time mid prices & market contexts (native home of `HYPE`).
+- **Dynamic Watchlist & Market Catalog**:
+  - Add, remove, and reorder up to **20 crypto markets**.
+  - Integrated search engine with alias resolution (e.g. `dogecoin` → `DOGE`, `bitcoin` → `BTC`, `ether` → `ETH`, `ripple` → `XRP`, `solana` → `SOL`).
+  - Locally persisted via Qt `Settings` with automatic migration and schema versioning.
+  - Horizontally scrollable asset tab bar that adapts gracefully without expanding or crowding the bar.
+- **Native Quattro Watchlist Manager**:
+  - Dedicated `⚙` settings control adjacent to asset tabs.
+  - Live search dropdown with instant `+ Add` action for catalog markets.
+  - Active watchlist list with `↑` / `↓` reordering and `✕` deletion.
+- **Live Streaming Multi-Provider Feeds**:
+  - **Binance**: Public spot ticker WebSocket streams & REST klines with dynamic subscriptions.
+  - **Coinbase**: Advanced Trade public ticker WebSocket feeds with dynamic IPC channel subscriptions.
+  - **Hyperliquid**: Real-time mid prices & market contexts (native DEX home of `HYPE`).
 - **Distinct Instrument & Pricing Engine**:
   - Distinguishes spot markets (`BTC/USDT`, `BTC/USD`) from perpetuals (`HYPE`, `BTC-PERP`).
   - Calculates Reference Spot Price across active spot feeds without cross-market distortion.
-  - Routes `HYPE` directly to its native DEX feed.
+  - Routes DEX-native tokens directly to their native feeds.
 - **Compact Market Terminal Panel**:
   - Large price display with color-coded 24h change & freshness indicator (`LIVE`, `STALE`, `OFFLINE`).
   - 24h High, Low, and USD Volume statistics.
   - Multi-exchange comparison table showing live prices across Binance, Coinbase, and Hyperliquid.
   - Native QML Canvas sparkline chart with timeframe selectors (`1H`, `4H`, `1D`, `1W`).
+  - Single-click `+ Add to Watchlist` action on the asset header.
 - **Zero Cost & Zero Daemon**:
   - $0 operating cost, zero API keys required, zero paid backends.
   - No background daemons, no extra Quickshell processes, no systemd units, no sudo needed.
 - **Resilient & Isolated**:
+  - Dynamic subscription updates over `stdin` without restarting unaffected feeds.
   - Automatic reconnection with exponential backoff and jitter.
-  - Independent provider failure isolation (one exchange going down does not disrupt the others).
+  - Independent provider failure isolation (one exchange going down does not disrupt the others or block watchlist editing).
   - Clean process teardown on disable or shell reload with zero orphaned child processes.
 
 ---
@@ -47,7 +57,7 @@ omarchy plugin add https://github.com/DPRC137/omarchy-market.git --enable --yes
 ```
 
 ### Method 2: Manual Installation
-1. Clone or copy into your Omarchy plugins directory:
+1. Clone or symlink into your Omarchy plugins directory:
    ```bash
    git clone https://github.com/DPRC137/omarchy-market.git ~/.config/omarchy/plugins/io.github.dpr.omarchy-market
    ```
@@ -74,13 +84,14 @@ omarchy-shell shell rescanPlugins
 
 ## Usage & Controls
 
-- **Left-Click** on the ticker: Opens / closes the compact Market Terminal popup.
+- **Left-Click** on the bar ticker: Opens / closes the compact Market Terminal popup.
 - **Middle-Click**: Forces an immediate market data refresh across all providers.
 - **Right-Click**: Cycles the active single-asset display in compact mode.
+- **Watchlist Settings (`⚙`)**: Opens the native Watchlist Manager to search, add, reorder, and remove assets.
 - **Keyboard in Terminal**:
-  - `Tab` / `Shift+Tab`: Switch between asset tabs (`BTC`, `ETH`, `SOL`, `HYPE`).
+  - `Tab` / `Shift+Tab`: Switch between watchlist asset tabs.
   - `R`: Refresh market data.
-  - `Escape`: Close terminal popup.
+  - `Escape`: Close Watchlist Manager / close terminal popup.
 
 ---
 
@@ -91,12 +102,12 @@ Settings can be customized directly in `~/.config/omarchy/shell.json`:
 ```json
 {
   "id": "io.github.dpr.omarchy-market",
-  "compact": false,
+  "multiAsset": false,
   "speed": 4000
 }
 ```
 
-- `compact` *(boolean)*: Toggle between full multi-asset scrolling ticker and single-asset compact cycling mode.
+- `multiAsset` *(boolean)*: Toggle between full multi-asset scrolling ticker and single-asset compact cycling mode.
 - `speed` *(number)*: Multi-asset cycling interval in milliseconds (default: `4000`).
 
 ---

@@ -1,15 +1,6 @@
 #!/bin/bash
-# scripts/live-test.sh - Optional live exchange integration test
-
-set -eo pipefail
-
-echo "============================================================"
-echo "RUNNING LIVE EXCHANGE INTEGRATION TEST"
-echo "============================================================"
-
+set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$DIR"
+node "$DIR/tests/test_live_ws.js"
+node "$DIR/tests/test_subscriptions.js"
 
-node tests/test_live_ws.js
-
-echo "Live integration test completed successfully."

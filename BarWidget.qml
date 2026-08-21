@@ -11,7 +11,7 @@ BarWidget {
   readonly property var watchlist: (marketService && marketService.watchlist) ? marketService.watchlist : ["BTC", "ETH", "SOL", "HYPE"]
 
   property int currentAssetIndex: 0
-  readonly property string currentAsset: watchlist[currentAssetIndex] || "BTC"
+  readonly property string currentAsset: (watchlist && watchlist.length > 0) ? (watchlist[currentAssetIndex % watchlist.length] || "BTC") : "BTC"
   readonly property var currentQuote: marketService ? marketService.getQuote(currentAsset, "aggregate") : MarketModel.createEmptyQuote(currentAsset, "aggregate")
 
   // Default to clean cycling single-asset display so it never collides with center clock

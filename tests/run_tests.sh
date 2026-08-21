@@ -26,6 +26,7 @@ echo "✓ QML lint passed (0 errors)"
 echo -e "\n3. Running deterministic unit tests..."
 node tests/test_models.js
 node tests/test_fixtures.js
+node tests/test_subscriptions.js
 
 echo -e "\n============================================================"
 echo "ALL TESTS PASSED SUCCESSFULLY! ✓"

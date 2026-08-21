@@ -1,4 +1,5 @@
 import QtQuick
+import QtCore
 import Quickshell
 import "models/MarketModel.js" as MarketModel
 import "providers"
@@ -14,6 +15,7 @@ Item {
   property var pluginRegistry: null
 
   // Watchlist & Settings
+  property var structuredWatchlist: MarketModel.createDefaultWatchlist()
   property var watchlist: ["BTC", "ETH", "SOL", "HYPE"]
   property string preferredProvider: "aggregate" // aggregate, binance, coinbase, hyperliquid
   property int updateRevision: 0
@@ -26,21 +28,93 @@ Item {
   signal quoteUpdated(string asset, var quote)
   signal candlesUpdated(string asset, string timeframe, var candles)
 
+  Settings {
+    id: pluginSettings
+    category: "io.github.dpr.omarchy-market"
+    property string watchlistJson: ""
+  }
+
+  function loadWatchlist() {
+    var loaded = MarketModel.deserializeWatchlist(pluginSettings.watchlistJson)
+    structuredWatchlist = loaded
+    watchlist = loaded.items.map(function(it) { return it.asset })
+    syncProviders()
+  }
+
+  function saveWatchlist() {
+    pluginSettings.watchlistJson = MarketModel.serializeWatchlist(structuredWatchlist)
+  }
+
+  function addMarket(assetOrQuery) {
+    var res = MarketModel.addWatchlistMarket(structuredWatchlist, assetOrQuery)
+    if (res.success) {
+      structuredWatchlist = res.watchlist
+      watchlist = res.watchlist.items.map(function(it) { return it.asset })
+      saveWatchlist()
+      syncProviders()
+      root.updateRevision++
+      fetchCandles(watchlist[watchlist.length - 1], "1H")
+    }
+    return res
+  }
+
+  function removeMarket(asset) {
+    var res = MarketModel.removeWatchlistMarket(structuredWatchlist, asset)
+    if (res.success) {
+      structuredWatchlist = res.watchlist
+      watchlist = res.watchlist.items.map(function(it) { return it.asset })
+      saveWatchlist()
+      syncProviders()
+      root.updateRevision++
+    }
+    return res
+  }
+
+  function reorderMarket(fromIndex, toIndex) {
+    var res = MarketModel.reorderWatchlistMarket(structuredWatchlist, fromIndex, toIndex)
+    if (res.success) {
+      structuredWatchlist = res.watchlist
+      watchlist = res.watchlist.items.map(function(it) { return it.asset })
+      saveWatchlist()
+      root.updateRevision++
+    }
+    return res
+  }
+
+  function searchMarkets(query) {
+    return MarketModel.searchCatalog(query)
+  }
+
+  function isInWatchlist(asset) {
+    if (!asset) return false
+    var upper = String(asset).toUpperCase()
+    return root.watchlist.indexOf(upper) !== -1
+  }
+
+  function syncProviders() {
+    if (binanceProvider) binanceProvider.updateSubscriptions(root.watchlist)
+    if (coinbaseProvider) coinbaseProvider.updateSubscriptions(root.watchlist)
+    if (hyperliquidProvider) hyperliquidProvider.updateSubscriptions(root.watchlist)
+  }
+
   // Provider instances
   BinanceProvider {
     id: binanceProvider
+    targetAssets: root.watchlist
     onQuoteReceived: function(asset, quote) { root.handleProviderQuote("binance", asset, quote) }
     onCandlesReceived: function(asset, timeframe, list) { root.handleCandles("binance", asset, timeframe, list) }
   }
 
   CoinbaseProvider {
     id: coinbaseProvider
+    targetAssets: root.watchlist
     onQuoteReceived: function(asset, quote) { root.handleProviderQuote("coinbase", asset, quote) }
     onCandlesReceived: function(asset, timeframe, list) { root.handleCandles("coinbase", asset, timeframe, list) }
   }
 
   HyperliquidProvider {
     id: hyperliquidProvider
+    targetAssets: root.watchlist
     onQuoteReceived: function(asset, quote) { root.handleProviderQuote("hyperliquid", asset, quote) }
     onCandlesReceived: function(asset, timeframe, list) { root.handleCandles("hyperliquid", asset, timeframe, list) }
   }
@@ -111,7 +185,9 @@ Item {
 
   function fetchCandles(asset, timeframe) {
     var tf = timeframe || "1H"
-    if (asset === "HYPE") {
+    var cat = MarketModel.getCatalogItem(asset)
+    var isPerpOnly = (asset === "HYPE" || (cat && cat.instrument && cat.instrument.indexOf("PERP") !== -1))
+    if (isPerpOnly) {
       hyperliquidProvider.fetchCandles(asset, tf)
     } else {
       binanceProvider.fetchCandles(asset, tf)
@@ -128,6 +204,8 @@ Item {
 
   Component.onCompleted: {
     console.log("MarketService initialized. Starting crypto market feeds...")
+    loadWatchlist()
     refresh()
   }
 }
+

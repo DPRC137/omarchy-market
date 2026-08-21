@@ -16,11 +16,24 @@ Item {
   property int reconnectAttempts: 0
   property bool isFetchingSnapshot: false
   property bool isFetchingCandles: false
+  property var targetAssets: ["BTC", "ETH", "SOL"]
 
   readonly property string bridgeScriptPath: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.dpr.omarchy-market/scripts/ws_bridge.js"
 
   signal quoteReceived(string asset, var quote)
   signal candlesReceived(string asset, string timeframe, var candlesList)
+
+  function updateSubscriptions(assetsList) {
+    if (!assetsList || !Array.isArray(assetsList)) return
+    root.targetAssets = assetsList.filter(function(a) { return a !== "HYPE" })
+    if (bridgeProcess.running) {
+      bridgeProcess.write(JSON.stringify({
+        action: "set_subscriptions",
+        symbols: root.targetAssets
+      }) + "\n")
+    }
+    fetchSnapshot()
+  }
 
   function connect() {
     active = true
@@ -38,6 +51,9 @@ Item {
 
   function fetchSnapshot() {
     if (isFetchingSnapshot) return
+    var symbols = root.targetAssets.filter(function(a) { return a !== "HYPE" }).map(function(a) { return a + "USDT" })
+    if (symbols.length === 0) return
+
     isFetchingSnapshot = true
 
     try {
@@ -62,7 +78,8 @@ Item {
       }
       xhr.onerror = function() { root.isFetchingSnapshot = false }
       xhr.ontimeout = function() { root.isFetchingSnapshot = false }
-      xhr.open("GET", "https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22,%22SOLUSDT%22%5D")
+      var url = "https://api.binance.com/api/v3/ticker/24hr?symbols=" + encodeURIComponent(JSON.stringify(symbols))
+      xhr.open("GET", url)
       xhr.send()
     } catch (err) {
       isFetchingSnapshot = false
@@ -71,8 +88,8 @@ Item {
   }
 
   function fetchCandles(asset, timeframe) {
-    var symbol = (asset === "BTC" || asset === "ETH" || asset === "SOL") ? (asset + "USDT") : ""
-    if (!symbol || isFetchingCandles) return
+    if (asset === "HYPE" || isFetchingCandles) return
+    var symbol = asset + "USDT"
     isFetchingCandles = true
 
     var interval = "1h"
@@ -141,7 +158,7 @@ Item {
 
   Process {
     id: bridgeProcess
-    command: ["node", root.bridgeScriptPath, "binance"]
+    command: ["node", root.bridgeScriptPath, "binance", root.targetAssets.join(",")]
     workingDirectory: Quickshell.env("HOME")
 
     stdout: SplitParser {
@@ -200,3 +217,4 @@ Item {
 
   Component.onDestruction: disconnect()
 }
+

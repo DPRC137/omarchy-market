@@ -6,6 +6,8 @@
 
 "use strict";
 
+const readline = require("readline");
+
 const VALID_PROVIDERS = ["binance", "coinbase", "hyperliquid"];
 const rawProvider = (process.argv[2] || "binance").toLowerCase().trim();
 
@@ -15,6 +17,17 @@ if (!VALID_PROVIDERS.includes(rawProvider)) {
 }
 
 const provider = rawProvider;
+const rawSymbolsArg = process.argv[3] || "";
+let activeSymbols = parseSymbols(rawSymbolsArg);
+
+function parseSymbols(str) {
+  if (!str) {
+    return provider === "hyperliquid" ? ["BTC", "ETH", "SOL", "HYPE"] : ["BTC", "ETH", "SOL"];
+  }
+  const list = str.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+  return list.length > 0 ? list : (provider === "hyperliquid" ? ["BTC", "ETH", "SOL", "HYPE"] : ["BTC", "ETH", "SOL"]);
+}
+
 let ws = null;
 let reconnectTimer = null;
 let pingTimer = null;
@@ -69,8 +82,16 @@ function connect() {
   }
 }
 
+function getBinanceStreams(symbols) {
+  return symbols
+    .filter(s => s !== "HYPE") // HYPE is hyperliquid only
+    .map(s => s.toLowerCase() + "usdt@ticker");
+}
+
 function connectBinance() {
-  const url = "wss://stream.binance.com:9443/stream?streams=btcusdt@ticker/ethusdt@ticker/solusdt@ticker";
+  const streams = getBinanceStreams(activeSymbols);
+  const streamPath = streams.length > 0 ? streams.join("/") : "btcusdt@ticker";
+  const url = `wss://stream.binance.com:9443/stream?streams=${streamPath}`;
   ws = new WebSocket(url);
 
   ws.onopen = () => {
@@ -93,6 +114,12 @@ function connectBinance() {
   ws.onerror = (err) => handleClose("Binance stream error");
 }
 
+function getCoinbaseProducts(symbols) {
+  return symbols
+    .filter(s => s !== "HYPE")
+    .map(s => s + "-USD");
+}
+
 function connectCoinbase() {
   const url = "wss://ws-feed.exchange.coinbase.com";
   ws = new WebSocket(url);
@@ -101,12 +128,15 @@ function connectCoinbase() {
     reconnectDelay = 1000;
     resetWatchdog();
     emit({ type: "status", provider: "coinbase", status: "CONNECTED" });
-    const subMsg = JSON.stringify({
-      type: "subscribe",
-      product_ids: ["BTC-USD", "ETH-USD", "SOL-USD"],
-      channels: ["ticker"]
-    });
-    try { ws.send(subMsg); } catch (e) {}
+    const products = getCoinbaseProducts(activeSymbols);
+    if (products.length > 0) {
+      const subMsg = JSON.stringify({
+        type: "subscribe",
+        product_ids: products,
+        channels: ["ticker"]
+      });
+      try { ws.send(subMsg); } catch (e) {}
+    }
   };
 
   ws.onmessage = (event) => {
@@ -159,6 +189,144 @@ function connectHyperliquid() {
   ws.onerror = (err) => handleClose("Hyperliquid stream error");
 }
 
+// Dynamic Subscription Management over stdin
+function handleStdinCommand(cmdObj) {
+  if (!cmdObj || typeof cmdObj !== "object") return;
+  const action = cmdObj.action || cmdObj.cmd;
+  const symbols = Array.isArray(cmdObj.symbols) ? cmdObj.symbols.map(s => String(s).toUpperCase()) : [];
+
+  if (action === "set_subscriptions") {
+    const oldSymbols = activeSymbols;
+    activeSymbols = symbols;
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    if (provider === "binance") {
+      const toUnsub = oldSymbols.filter(s => !symbols.includes(s));
+      const toSub = symbols.filter(s => !oldSymbols.includes(s));
+
+      const unsubStreams = getBinanceStreams(toUnsub);
+      if (unsubStreams.length > 0) {
+        try {
+          ws.send(JSON.stringify({
+            method: "UNSUBSCRIBE",
+            params: unsubStreams,
+            id: Date.now()
+          }));
+        } catch (e) {}
+      }
+
+      const subStreams = getBinanceStreams(toSub);
+      if (subStreams.length > 0) {
+        try {
+          ws.send(JSON.stringify({
+            method: "SUBSCRIBE",
+            params: subStreams,
+            id: Date.now() + 1
+          }));
+        } catch (e) {}
+      }
+    } else if (provider === "coinbase") {
+      const toUnsub = oldSymbols.filter(s => !symbols.includes(s));
+      const toSub = symbols.filter(s => !oldSymbols.includes(s));
+
+      const unsubProducts = getCoinbaseProducts(toUnsub);
+      if (unsubProducts.length > 0) {
+        try {
+          ws.send(JSON.stringify({
+            type: "unsubscribe",
+            product_ids: unsubProducts,
+            channels: ["ticker"]
+          }));
+        } catch (e) {}
+      }
+
+      const subProducts = getCoinbaseProducts(toSub);
+      if (subProducts.length > 0) {
+        try {
+          ws.send(JSON.stringify({
+            type: "subscribe",
+            product_ids: subProducts,
+            channels: ["ticker"]
+          }));
+        } catch (e) {}
+      }
+    }
+  } else if (action === "subscribe") {
+    const newSyms = symbols.filter(s => !activeSymbols.includes(s));
+    if (newSyms.length === 0) return;
+    activeSymbols = activeSymbols.concat(newSyms);
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    if (provider === "binance") {
+      const streams = getBinanceStreams(newSyms);
+      if (streams.length > 0) {
+        try {
+          ws.send(JSON.stringify({
+            method: "SUBSCRIBE",
+            params: streams,
+            id: Date.now()
+          }));
+        } catch (e) {}
+      }
+    } else if (provider === "coinbase") {
+      const products = getCoinbaseProducts(newSyms);
+      if (products.length > 0) {
+        try {
+          ws.send(JSON.stringify({
+            type: "subscribe",
+            product_ids: products,
+            channels: ["ticker"]
+          }));
+        } catch (e) {}
+      }
+    }
+  } else if (action === "unsubscribe") {
+    activeSymbols = activeSymbols.filter(s => !symbols.includes(s));
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    if (provider === "binance") {
+      const streams = getBinanceStreams(symbols);
+      if (streams.length > 0) {
+        try {
+          ws.send(JSON.stringify({
+            method: "UNSUBSCRIBE",
+            params: streams,
+            id: Date.now()
+          }));
+        } catch (e) {}
+      }
+    } else if (provider === "coinbase") {
+      const products = getCoinbaseProducts(symbols);
+      if (products.length > 0) {
+        try {
+          ws.send(JSON.stringify({
+            type: "unsubscribe",
+            product_ids: products,
+            channels: ["ticker"]
+          }));
+        } catch (e) {}
+      }
+    }
+  }
+}
+
+// Setup stdin line reader for dynamic IPC from QML
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  terminal: false
+});
+
+rl.on("line", (line) => {
+  if (!line || !line.trim()) return;
+  try {
+    const msg = JSON.parse(line.trim());
+    handleStdinCommand(msg);
+  } catch (e) {}
+});
+
 function handleClose(reason) {
   if (isClosing) return;
   clearAllTimers();
@@ -199,3 +367,4 @@ process.stdin.on("close", () => cleanupAndExit(0));
 process.on("exit", () => cleanupAndExit(0));
 
 connect();
+

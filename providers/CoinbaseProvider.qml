@@ -16,11 +16,24 @@ Item {
   property int reconnectAttempts: 0
   property bool isFetchingSnapshot: false
   property bool isFetchingCandles: false
+  property var targetAssets: ["BTC", "ETH", "SOL"]
 
   readonly property string bridgeScriptPath: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.dpr.omarchy-market/scripts/ws_bridge.js"
 
   signal quoteReceived(string asset, var quote)
   signal candlesReceived(string asset, string timeframe, var candlesList)
+
+  function updateSubscriptions(assetsList) {
+    if (!assetsList || !Array.isArray(assetsList)) return
+    root.targetAssets = assetsList.filter(function(a) { return a !== "HYPE" })
+    if (bridgeProcess.running) {
+      bridgeProcess.write(JSON.stringify({
+        action: "set_subscriptions",
+        symbols: root.targetAssets
+      }) + "\n")
+    }
+    fetchSnapshot()
+  }
 
   function connect() {
     active = true
@@ -39,7 +52,7 @@ Item {
   function fetchSnapshot() {
     if (isFetchingSnapshot) return
     isFetchingSnapshot = true
-    var assets = ["BTC", "ETH", "SOL"]
+    var assets = root.targetAssets.filter(function(a) { return a !== "HYPE" })
     for (var i = 0; i < assets.length; i++) {
       fetchAsset(assets[i])
     }
@@ -171,13 +184,13 @@ Item {
       xhr.send()
     } catch (err) {
       isFetchingCandles = false
-      console.warn("CoinbaseProvider: candle fetch failed:", err)
+      console.warn("CoinbaseProvider: candle fetch failed for " + asset + ":", err)
     }
   }
 
   Process {
     id: bridgeProcess
-    command: ["node", root.bridgeScriptPath, "coinbase"]
+    command: ["node", root.bridgeScriptPath, "coinbase", root.targetAssets.join(",")]
     workingDirectory: Quickshell.env("HOME")
 
     stdout: SplitParser {

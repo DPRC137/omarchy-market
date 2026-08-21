@@ -22,7 +22,7 @@ console.log("✓ Null/undefined payload safety verified");
 // 2. Unknown symbol handling
 const binanceUnknown = M.normalizeBinanceTicker({ s: "UNKNOWNUSDT", c: "123.45" });
 assert.strictEqual(binanceUnknown, null);
-const cbUnknown = M.normalizeCoinbaseTicker({ type: "ticker", product_id: "DOGE-USD", price: "0.15" });
+const cbUnknown = M.normalizeCoinbaseTicker({ type: "ticker", product_id: "UNKNOWN-USD", price: "0.15" });
 assert.strictEqual(cbUnknown, null);
 console.log("✓ Unknown symbol filtering verified");
 

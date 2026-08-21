@@ -16,11 +16,18 @@ Item {
   property int reconnectAttempts: 0
   property bool isFetchingSnapshot: false
   property bool isFetchingCandles: false
+  property var targetAssets: ["BTC", "ETH", "SOL", "HYPE"]
 
   readonly property string bridgeScriptPath: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.dpr.omarchy-market/scripts/ws_bridge.js"
 
   signal quoteReceived(string asset, var quote)
   signal candlesReceived(string asset, string timeframe, var candlesList)
+
+  function updateSubscriptions(assetsList) {
+    if (!assetsList || !Array.isArray(assetsList)) return
+    root.targetAssets = assetsList
+    fetchMetaAndContexts()
+  }
 
   function connect() {
     active = true
@@ -53,7 +60,7 @@ Item {
           if (xhr.status === 200) {
             try {
               var data = JSON.parse(xhr.responseText)
-              var list = MarketModel.normalizeHyperliquidMeta(data, ["BTC", "ETH", "SOL", "HYPE"], Date.now())
+              var list = MarketModel.normalizeHyperliquidMeta(data, root.targetAssets, Date.now())
               if (list && list.length > 0) {
                 root.status = "CONNECTED"
                 root.reconnectAttempts = 0
@@ -88,7 +95,7 @@ Item {
     root.status = "CONNECTED"
     root.reconnectAttempts = 0
     root.lastUpdateTimestamp = Date.now()
-    var targetAssets = ["BTC", "ETH", "SOL", "HYPE"]
+    var targetAssets = root.targetAssets
     var nextQuotes = Object.assign({}, quotes)
 
     for (var i = 0; i < targetAssets.length; i++) {
@@ -230,3 +237,4 @@ Item {
 
   Component.onDestruction: disconnect()
 }
+
