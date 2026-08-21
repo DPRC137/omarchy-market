@@ -55,6 +55,19 @@ omarchy plugin add https://github.com/DPRC137/omarchy-market.git --enable --yes
    omarchy plugin enable io.github.dpr.omarchy-market
    ```
 
+## Removal
+
+### Automatic via Omarchy CLI
+```bash
+omarchy plugin remove io.github.dpr.omarchy-market
+```
+
+### Manual Removal
+```bash
+rm -rf ~/.config/omarchy/plugins/io.github.dpr.omarchy-market
+omarchy-shell shell rescanPlugins
+```
+
 ---
 
 ## Usage & Controls
