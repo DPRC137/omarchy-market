@@ -25,7 +25,10 @@ Item {
 
   function updateSubscriptions(assetsList) {
     if (!assetsList || !Array.isArray(assetsList)) return
-    root.targetAssets = assetsList
+    root.targetAssets = assetsList.filter(function(a) {
+      var cat = MarketModel.getCatalogItem(a)
+      return cat && cat.assetClass === "crypto"
+    })
     fetchMetaAndContexts()
   }
 
@@ -118,7 +121,8 @@ Item {
   }
 
   function fetchCandles(asset, timeframe) {
-    if (isFetchingCandles) return
+    var cat = MarketModel.getCatalogItem(asset)
+    if (!cat || cat.assetClass !== "crypto" || isFetchingCandles) return
     isFetchingCandles = true
 
     var interval = "1h"

@@ -5,7 +5,7 @@ const path = require('path');
 const assert = require('assert');
 
 const code = fs.readFileSync(path.join(__dirname, '../models/MarketModel.js'), 'utf8').replace('.pragma library', '');
-const moduleFn = new Function(code + '; return { normalizeBinanceTicker, normalizeCoinbaseTicker, normalizeHyperliquidMeta, calculateReferenceQuote, createEmptyQuote, getFreshness };');
+const moduleFn = new Function(code + '; return { normalizeBinanceTicker, normalizeCoinbaseTicker, normalizeHyperliquidMeta, normalizeYahooChart, normalizeYahooCandles, calculateReferenceQuote, createEmptyQuote, getFreshness };');
 const M = moduleFn();
 
 console.log("=== RUNNING FIXTURE RESILIENCE & EDGE-CASE TESTS ===");
@@ -17,6 +17,12 @@ assert.strictEqual(M.normalizeCoinbaseTicker(null), null);
 assert.strictEqual(M.normalizeCoinbaseTicker({ type: "heartbeat" }), null);
 assert.deepStrictEqual(M.normalizeHyperliquidMeta(null), []);
 assert.deepStrictEqual(M.normalizeHyperliquidMeta([]), []);
+assert.strictEqual(M.normalizeYahooChart(null), null);
+assert.strictEqual(M.normalizeYahooChart({}), null);
+assert.strictEqual(M.normalizeYahooChart({ chart: {} }), null);
+assert.strictEqual(M.normalizeYahooChart({ chart: { result: [] } }), null);
+assert.deepStrictEqual(M.normalizeYahooCandles(null), []);
+assert.deepStrictEqual(M.normalizeYahooCandles({}), []);
 console.log("✓ Null/undefined payload safety verified");
 
 // 2. Unknown symbol handling
@@ -24,6 +30,8 @@ const binanceUnknown = M.normalizeBinanceTicker({ s: "UNKNOWNUSDT", c: "123.45" 
 assert.strictEqual(binanceUnknown, null);
 const cbUnknown = M.normalizeCoinbaseTicker({ type: "ticker", product_id: "UNKNOWN-USD", price: "0.15" });
 assert.strictEqual(cbUnknown, null);
+const yahooUnknown = M.normalizeYahooChart({ chart: { result: [{ meta: { symbol: "NONEXISTENT_STOCK" } }] } });
+assert.strictEqual(yahooUnknown, null);
 console.log("✓ Unknown symbol filtering verified");
 
 // 3. Malformed/NaN number handling
@@ -31,6 +39,17 @@ const binanceNaN = M.normalizeBinanceTicker({ s: "BTCUSDT", c: "not-a-number", P
 assert.strictEqual(binanceNaN.asset, "BTC");
 assert.strictEqual(binanceNaN.price, 0);
 assert.strictEqual(binanceNaN.change24h, 0);
+
+const yahooNaN = M.normalizeYahooChart({
+  chart: {
+    result: [{
+      meta: { symbol: "AAPL", regularMarketPrice: "not-a-number" },
+      timestamp: [1000],
+      indicators: { quote: [{ close: ["invalid"] }] }
+    }]
+  }
+});
+assert.strictEqual(yahooNaN, null);
 console.log("✓ Malformed/NaN number recovery verified");
 
 // 4. Missing fields in Hyperliquid payload
@@ -43,7 +62,20 @@ assert.strictEqual(hlRes.length, 1);
 assert.strictEqual(hlRes[0].asset, "BTC");
 console.log("✓ Partial provider payload recovery verified");
 
-// 5. Provider Isolation during Aggregation (One provider offline)
+// 5. Yahoo Error payload handling
+const yahooErrorPayload = {
+  chart: {
+    error: {
+      code: "Unauthorized",
+      description: "Invalid Crumb"
+    }
+  }
+};
+assert.strictEqual(M.normalizeYahooChart(yahooErrorPayload), null);
+assert.deepStrictEqual(M.normalizeYahooCandles(yahooErrorPayload), []);
+console.log("✓ Yahoo error payload resilience verified");
+
+// 6. Provider Isolation during Aggregation (One provider offline)
 const now = 2000000;
 const liveBinance = {
   asset: "BTC", instrument: "BTC_USD_SPOT", price: 72000, change24h: 3.5, volume24h: 1e9,

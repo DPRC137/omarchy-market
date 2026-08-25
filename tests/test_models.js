@@ -7,7 +7,7 @@ const assert = require('assert');
 // Load MarketModel.js by stripping .pragma library for Node environment
 const code = fs.readFileSync(path.join(__dirname, '../models/MarketModel.js'), 'utf8')
   .replace('.pragma library', '');
-const moduleFn = new Function(code + '; return { SCHEMA_VERSION, MAX_WATCHLIST_SIZE, INSTRUMENT_CATALOG, CATALOG_BY_ASSET, ASSET_DEFINITIONS, INSTRUMENT_TYPES, DEFAULT_ASSETS, FRESHNESS_THRESHOLDS, getCatalogItem, searchCatalog, isValidMarket, createDefaultWatchlist, serializeWatchlist, deserializeWatchlist, addWatchlistMarket, removeWatchlistMarket, reorderWatchlistMarket, createEmptyQuote, getFreshness, normalizeBinanceTicker, normalizeCoinbaseTicker, normalizeHyperliquidMeta, calculateReferenceQuote, formatPrice, formatCompactPrice, formatPercentage, formatVolume };');
+const moduleFn = new Function(code + '; return { SCHEMA_VERSION, MAX_WATCHLIST_SIZE, INSTRUMENT_CATALOG, CATALOG_BY_ASSET, ASSET_DEFINITIONS, INSTRUMENT_TYPES, DEFAULT_ASSETS, FRESHNESS_THRESHOLDS, getCatalogItem, searchCatalog, isValidMarket, createDefaultWatchlist, serializeWatchlist, deserializeWatchlist, addWatchlistMarket, removeWatchlistMarket, reorderWatchlistMarket, createEmptyQuote, getFreshness, normalizeBinanceTicker, normalizeCoinbaseTicker, normalizeHyperliquidMeta, normalizeYahooChart, normalizeYahooCandles, calculateReferenceQuote, formatPrice, formatCompactPrice, formatPercentage, formatVolume };');
 const M = moduleFn();
 
 console.log("=== RUNNING DETERMINISTIC MARKET MODEL & WATCHLIST TESTS ===");
@@ -206,5 +206,158 @@ assert.strictEqual(removeLast.success, false);
 assert.strictEqual(removeLast.reason, "MIN_LIMIT");
 console.log("✓ Removing markets and minimum limit guard verified");
 
-console.log("\nALL 17 TEST SUITES PASSED DETERMINISTICALLY! ✓\n");
+// === YAHOO FINANCE & STOCK MARKET DETERMINISTIC TESTS ===
+
+// Test 18: Yahoo Chart Normalization with real AAPL fixture
+const aaplRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/yahoo_aapl.json'), 'utf8'));
+const aaplQuote = M.normalizeYahooChart(aaplRaw, 1787590000000); // regular trading session time
+assert.ok(aaplQuote, "AAPL quote should not be null");
+assert.strictEqual(aaplQuote.asset, "AAPL");
+assert.strictEqual(aaplQuote.instrument, "AAPL_USD_STOCK");
+assert.strictEqual(aaplQuote.priceType, "STOCK_LAST");
+assert.strictEqual(aaplQuote.assetClass, "stock");
+assert.strictEqual(aaplQuote.provider, "yahoo");
+assert.strictEqual(aaplQuote.exchange, "NASDAQ");
+assert.ok(Number.isFinite(aaplQuote.price) && aaplQuote.price > 0, "Price must be a positive finite number");
+assert.ok(Number.isFinite(aaplQuote.open) && aaplQuote.open > 0, "Regular open must be a positive finite number");
+assert.ok(Number.isFinite(aaplQuote.previousClose) && aaplQuote.previousClose > 0, "Previous close must be a positive finite number");
+assert.ok(Number.isFinite(aaplQuote.change24h), "change24h must be finite");
+assert.ok(Number.isFinite(aaplQuote.changeAmount), "changeAmount must be finite");
+
+// Internal consistency validation
+const expectedChangeAmount = aaplQuote.price - aaplQuote.previousClose;
+assert.ok(Math.abs(aaplQuote.changeAmount - expectedChangeAmount) < 0.001, "changeAmount must equal price - previousClose");
+const expectedChangePercent = (expectedChangeAmount / aaplQuote.previousClose) * 100;
+assert.ok(Math.abs(aaplQuote.change24h - expectedChangePercent) < 0.01, "change24h % must match (change / prevClose) * 100");
+assert.strictEqual(aaplQuote.freshness, "LIVE");
+console.log("✓ Yahoo Chart Normalization passed (AAPL Stock: $" + aaplQuote.price.toFixed(2) + ", Open: $" + aaplQuote.open.toFixed(2) + ", PrevClose: $" + aaplQuote.previousClose.toFixed(2) + ", Change: " + aaplQuote.change24h.toFixed(2) + "%)");
+
+// Test 19: Backward Scanning on Null-Padded Chart Series
+const paddedChart = {
+  chart: {
+    result: [{
+      meta: {
+        symbol: "MSFT",
+        regularMarketPrice: 420.0,
+        previousClose: 418.0,
+        currentTradingPeriod: {
+          regular: { start: 1000, end: 2000 }
+        }
+      },
+      timestamp: [1000, 1100, 1200, 1300],
+      indicators: {
+        quote: [{
+          open: [419.0, 420.0, 422.0, null],
+          high: [421.0, 423.0, 424.0, null],
+          low: [418.0, 419.0, 421.0, null],
+          close: [420.0, 422.5, null, null],
+          volume: [1000, 2000, null, null]
+        }]
+      }
+    }]
+  }
+};
+const msftQuote = M.normalizeYahooChart(paddedChart, 1500000);
+assert.ok(msftQuote);
+assert.strictEqual(msftQuote.price, 422.5, "Latest non-null close should be extracted via backward scan");
+assert.strictEqual(msftQuote.open, 419.0, "Regular open from first bar");
+console.log("✓ Backward scanning on null-padded chart series verified");
+
+// Test 20: Market Session States & Post-Market Reference Close
+const sessionTestChart = {
+  chart: {
+    result: [{
+      meta: {
+        symbol: "NVDA",
+        regularMarketPrice: 130.0,
+        previousClose: 125.0,
+        currentTradingPeriod: {
+          pre: { start: 100, end: 200 },
+          regular: { start: 200, end: 500 },
+          post: { start: 500, end: 700 }
+        }
+      },
+      timestamp: [150, 200, 400, 500, 600],
+      indicators: {
+        quote: [{
+          open: [126.0, 127.0, 129.0, 130.0, 132.0],
+          high: [127.0, 128.0, 131.0, 131.0, 133.0],
+          low: [125.0, 126.0, 128.0, 129.0, 131.0],
+          close: [126.5, 127.5, 130.0, 131.0, 132.5],
+          volume: [10, 20, 30, 40, 50]
+        }]
+      }
+    }]
+  }
+};
+
+// 20a: Pre-market
+const preQuote = M.normalizeYahooChart(sessionTestChart, 150 * 1000);
+assert.strictEqual(preQuote.marketState, "preMarket");
+assert.strictEqual(preQuote.previousClose, 125.0, "Pre-market reference is previous trading day close");
+
+// 20b: Regular session
+const regQuote = M.normalizeYahooChart(sessionTestChart, 350 * 1000);
+assert.strictEqual(regQuote.marketState, "regular");
+assert.strictEqual(regQuote.previousClose, 125.0, "Regular session reference is previous trading day close");
+
+// 20c: Post-market (reference close is today's regular session close at/before regular.end=500 -> 131.0)
+const postQuote = M.normalizeYahooChart(sessionTestChart, 650 * 1000);
+assert.strictEqual(postQuote.marketState, "postMarket");
+assert.strictEqual(postQuote.previousClose, 131.0, "Post-market reference is today regular close at regular.end");
+assert.strictEqual(postQuote.price, 132.5);
+assert.strictEqual(postQuote.changeAmount, 1.5); // 132.5 - 131.0
+
+// 20d: Closed session (e.g. overnight timestamp 800)
+const closedQuote = M.normalizeYahooChart(sessionTestChart, 800 * 1000);
+assert.strictEqual(closedQuote.marketState, "closed");
+console.log("✓ Market session states & post-market reference close verified");
+
+// Test 21: Yahoo Candle Normalization
+const candles = M.normalizeYahooCandles(sessionTestChart);
+assert.strictEqual(candles.length, 5);
+assert.strictEqual(candles[0].time, 150 * 1000);
+assert.strictEqual(candles[0].open, 126.0);
+assert.strictEqual(candles[0].close, 126.5);
+assert.strictEqual(candles[4].time, 600 * 1000);
+assert.strictEqual(candles[4].close, 132.5);
+console.log("✓ Yahoo Candle normalization verified");
+
+// Test 22: Stock Catalog Search & Asset Class tagging
+const searchApple = M.searchCatalog("apple");
+assert.ok(searchApple.length > 0);
+assert.strictEqual(searchApple[0].asset, "AAPL");
+assert.strictEqual(searchApple[0].assetClass, "stock");
+
+const searchNvda = M.searchCatalog("nvidia");
+assert.strictEqual(searchNvda[0].asset, "NVDA");
+assert.strictEqual(searchNvda[0].assetClass, "stock");
+
+const searchBtcClass = M.searchCatalog("bitcoin");
+assert.strictEqual(searchBtcClass[0].asset, "BTC");
+assert.strictEqual(searchBtcClass[0].assetClass, "crypto");
+console.log("✓ Stock catalog search & assetClass tagging verified");
+
+// Test 23: Reference Quote for Stocks (Yahoo Provider Isolation)
+const stockQuotes = { yahoo: aaplQuote };
+const stockRef = M.calculateReferenceQuote("AAPL", stockQuotes, 1787590000000);
+assert.strictEqual(stockRef.asset, "AAPL");
+assert.strictEqual(stockRef.provider, "yahoo");
+assert.strictEqual(stockRef.assetClass, "stock");
+
+// Ensure crypto providers are ignored for stocks
+const wrongCryptoQuotes = { binance: btcBinance, coinbase: btcCoinbase };
+const emptyStockRef = M.calculateReferenceQuote("AAPL", wrongCryptoQuotes, 1787590000000);
+assert.strictEqual(emptyStockRef.provider, "yahoo");
+assert.strictEqual(emptyStockRef.price, 0);
+
+// Ensure Yahoo is ignored for crypto
+const wrongYahooQuotes = { yahoo: aaplQuote };
+const emptyCryptoRef = M.calculateReferenceQuote("BTC", wrongYahooQuotes, 1787590000000);
+assert.strictEqual(emptyCryptoRef.provider, "aggregate");
+assert.strictEqual(emptyCryptoRef.price, 0);
+console.log("✓ Stock reference price & provider boundary isolation verified");
+
+console.log("\nALL 23 TEST SUITES PASSED DETERMINISTICALLY! ✓\n");
+
 

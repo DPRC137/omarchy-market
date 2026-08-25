@@ -95,6 +95,7 @@ Item {
     if (binanceProvider) binanceProvider.updateSubscriptions(root.watchlist)
     if (coinbaseProvider) coinbaseProvider.updateSubscriptions(root.watchlist)
     if (hyperliquidProvider) hyperliquidProvider.updateSubscriptions(root.watchlist)
+    if (yahooProvider) yahooProvider.updateSubscriptions(root.watchlist)
   }
 
   // Provider instances
@@ -117,6 +118,13 @@ Item {
     targetAssets: root.watchlist
     onQuoteReceived: function(asset, quote) { root.handleProviderQuote("hyperliquid", asset, quote) }
     onCandlesReceived: function(asset, timeframe, list) { root.handleCandles("hyperliquid", asset, timeframe, list) }
+  }
+
+  YahooProvider {
+    id: yahooProvider
+    targetAssets: root.watchlist
+    onQuoteReceived: function(asset, quote) { root.handleProviderQuote("yahoo", asset, quote) }
+    onCandlesReceived: function(asset, timeframe, list) { root.handleCandles("yahoo", asset, timeframe, list) }
   }
 
   function handleProviderQuote(providerId, asset, quote) {
@@ -175,6 +183,7 @@ Item {
     if (providerId === "binance") return binanceProvider.status
     if (providerId === "coinbase") return coinbaseProvider.status
     if (providerId === "hyperliquid") return hyperliquidProvider.status
+    if (providerId === "yahoo") return yahooProvider.status
     return "UNKNOWN"
   }
 
@@ -183,9 +192,18 @@ Item {
     return candleStore[key] || []
   }
 
-  function fetchCandles(asset, timeframe) {
+  function fetchCandles(asset, timeframe, forceRefresh) {
     var tf = timeframe || "1H"
+    var key = asset + "_" + tf
+    if (!forceRefresh && candleStore[key] && candleStore[key].length > 0) {
+      root.candlesUpdated(asset, tf, candleStore[key])
+      return
+    }
     var cat = MarketModel.getCatalogItem(asset)
+    if (cat && cat.assetClass === "stock") {
+      yahooProvider.fetchCandles(asset, tf)
+      return
+    }
     var isPerpOnly = (asset === "HYPE" || (cat && cat.instrument && cat.instrument.indexOf("PERP") !== -1))
     if (isPerpOnly) {
       hyperliquidProvider.fetchCandles(asset, tf)
@@ -200,10 +218,11 @@ Item {
     binanceProvider.fetchSnapshot()
     coinbaseProvider.fetchSnapshot()
     hyperliquidProvider.fetchMetaAndContexts()
+    yahooProvider.fetchSnapshot()
   }
 
   Component.onCompleted: {
-    console.log("MarketService initialized. Starting crypto market feeds...")
+    console.log("MarketService initialized. Starting market feeds...")
     loadWatchlist()
     refresh()
   }

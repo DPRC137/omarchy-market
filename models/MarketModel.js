@@ -10,7 +10,8 @@ var INSTRUMENT_TYPES = {
   SPOT_BID: "SPOT_BID",
   SPOT_ASK: "SPOT_ASK",
   PERP_MID: "PERP_MID",
-  PERP_MARK: "PERP_MARK"
+  PERP_MARK: "PERP_MARK",
+  STOCK_LAST: "STOCK_LAST"
 };
 
 var FRESHNESS_THRESHOLDS = {
@@ -20,9 +21,233 @@ var FRESHNESS_THRESHOLDS = {
 
 // Comprehensive lightweight instrument catalog built from public provider specifications
 var INSTRUMENT_CATALOG = [
+  // Curated major US Equities
+  {
+    asset: "AAPL",
+    name: "Apple",
+    assetClass: "stock",
+    instrument: "AAPL_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["aapl", "apple", "apple inc"],
+    providers: { yahoo: "AAPL" }
+  },
+  {
+    asset: "MSFT",
+    name: "Microsoft",
+    assetClass: "stock",
+    instrument: "MSFT_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["msft", "microsoft"],
+    providers: { yahoo: "MSFT" }
+  },
+  {
+    asset: "NVDA",
+    name: "NVIDIA",
+    assetClass: "stock",
+    instrument: "NVDA_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["nvda", "nvidia"],
+    providers: { yahoo: "NVDA" }
+  },
+  {
+    asset: "AMZN",
+    name: "Amazon",
+    assetClass: "stock",
+    instrument: "AMZN_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["amzn", "amazon", "amazon.com"],
+    providers: { yahoo: "AMZN" }
+  },
+  {
+    asset: "GOOGL",
+    name: "Alphabet",
+    assetClass: "stock",
+    instrument: "GOOGL_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["googl", "goog", "google", "alphabet"],
+    providers: { yahoo: "GOOGL" }
+  },
+  {
+    asset: "META",
+    name: "Meta Platforms",
+    assetClass: "stock",
+    instrument: "META_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["meta", "facebook"],
+    providers: { yahoo: "META" }
+  },
+  {
+    asset: "TSLA",
+    name: "Tesla",
+    assetClass: "stock",
+    instrument: "TSLA_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["tsla", "tesla"],
+    providers: { yahoo: "TSLA" }
+  },
+  {
+    asset: "AVGO",
+    name: "Broadcom",
+    assetClass: "stock",
+    instrument: "AVGO_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["avgo", "broadcom"],
+    providers: { yahoo: "AVGO" }
+  },
+  {
+    asset: "AMD",
+    name: "Advanced Micro Devices",
+    assetClass: "stock",
+    instrument: "AMD_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["amd", "advanced micro devices"],
+    providers: { yahoo: "AMD" }
+  },
+  {
+    asset: "NFLX",
+    name: "Netflix",
+    assetClass: "stock",
+    instrument: "NFLX_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["nflx", "netflix"],
+    providers: { yahoo: "NFLX" }
+  },
+  {
+    asset: "ORCL",
+    name: "Oracle",
+    assetClass: "stock",
+    instrument: "ORCL_USD_STOCK",
+    exchange: "NYSE",
+    currency: "USD",
+    precision: 2,
+    aliases: ["orcl", "oracle"],
+    providers: { yahoo: "ORCL" }
+  },
+  {
+    asset: "CRM",
+    name: "Salesforce",
+    assetClass: "stock",
+    instrument: "CRM_USD_STOCK",
+    exchange: "NYSE",
+    currency: "USD",
+    precision: 2,
+    aliases: ["crm", "salesforce"],
+    providers: { yahoo: "CRM" }
+  },
+  {
+    asset: "ADBE",
+    name: "Adobe",
+    assetClass: "stock",
+    instrument: "ADBE_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["adbe", "adobe"],
+    providers: { yahoo: "ADBE" }
+  },
+  {
+    asset: "QCOM",
+    name: "Qualcomm",
+    assetClass: "stock",
+    instrument: "QCOM_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["qcom", "qualcomm"],
+    providers: { yahoo: "QCOM" }
+  },
+  {
+    asset: "INTC",
+    name: "Intel",
+    assetClass: "stock",
+    instrument: "INTC_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["intc", "intel"],
+    providers: { yahoo: "INTC" }
+  },
+  {
+    asset: "JPM",
+    name: "JPMorgan Chase",
+    assetClass: "stock",
+    instrument: "JPM_USD_STOCK",
+    exchange: "NYSE",
+    currency: "USD",
+    precision: 2,
+    aliases: ["jpm", "jpmorgan", "jp morgan", "chase"],
+    providers: { yahoo: "JPM" }
+  },
+  {
+    asset: "V",
+    name: "Visa",
+    assetClass: "stock",
+    instrument: "V_USD_STOCK",
+    exchange: "NYSE",
+    currency: "USD",
+    precision: 2,
+    aliases: ["v", "visa"],
+    providers: { yahoo: "V" }
+  },
+  {
+    asset: "MA",
+    name: "Mastercard",
+    assetClass: "stock",
+    instrument: "MA_USD_STOCK",
+    exchange: "NYSE",
+    currency: "USD",
+    precision: 2,
+    aliases: ["ma", "mastercard"],
+    providers: { yahoo: "MA" }
+  },
+  {
+    asset: "WMT",
+    name: "Walmart",
+    assetClass: "stock",
+    instrument: "WMT_USD_STOCK",
+    exchange: "NYSE",
+    currency: "USD",
+    precision: 2,
+    aliases: ["wmt", "walmart"],
+    providers: { yahoo: "WMT" }
+  },
+  {
+    asset: "COST",
+    name: "Costco",
+    assetClass: "stock",
+    instrument: "COST_USD_STOCK",
+    exchange: "NASDAQ",
+    currency: "USD",
+    precision: 2,
+    aliases: ["cost", "costco"],
+    providers: { yahoo: "COST" }
+  },
+
+  // Major Cryptocurrencies
   {
     asset: "BTC",
     name: "Bitcoin",
+    assetClass: "crypto",
     instrument: "BTC_USD_SPOT",
     precision: 2,
     aliases: ["btc", "bitcoin", "xbt", "btcusd", "btcusdt"],
@@ -31,6 +256,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "ETH",
     name: "Ethereum",
+    assetClass: "crypto",
     instrument: "ETH_USD_SPOT",
     precision: 2,
     aliases: ["eth", "ethereum", "ether", "ethusd", "ethusdt"],
@@ -39,6 +265,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "SOL",
     name: "Solana",
+    assetClass: "crypto",
     instrument: "SOL_USD_SPOT",
     precision: 2,
     aliases: ["sol", "solana", "solusd", "solusdt"],
@@ -47,6 +274,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "HYPE",
     name: "Hyperliquid",
+    assetClass: "crypto",
     instrument: "HYPE_USD_PERP",
     precision: 3,
     aliases: ["hype", "hyperliquid"],
@@ -55,6 +283,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "DOGE",
     name: "Dogecoin",
+    assetClass: "crypto",
     instrument: "DOGE_USD_SPOT",
     precision: 4,
     aliases: ["doge", "dogecoin", "dogeusd", "dogeusdt"],
@@ -63,6 +292,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "XRP",
     name: "XRP",
+    assetClass: "crypto",
     instrument: "XRP_USD_SPOT",
     precision: 4,
     aliases: ["xrp", "ripple", "xrpusd", "xrpusdt"],
@@ -71,6 +301,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "ADA",
     name: "Cardano",
+    assetClass: "crypto",
     instrument: "ADA_USD_SPOT",
     precision: 4,
     aliases: ["ada", "cardano", "adausd", "adausdt"],
@@ -79,6 +310,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "AVAX",
     name: "Avalanche",
+    assetClass: "crypto",
     instrument: "AVAX_USD_SPOT",
     precision: 2,
     aliases: ["avax", "avalanche", "avaxusd", "avaxusdt"],
@@ -87,6 +319,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "SUI",
     name: "Sui",
+    assetClass: "crypto",
     instrument: "SUI_USD_SPOT",
     precision: 3,
     aliases: ["sui", "suiusd", "suiusdt"],
@@ -95,6 +328,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "LINK",
     name: "Chainlink",
+    assetClass: "crypto",
     instrument: "LINK_USD_SPOT",
     precision: 2,
     aliases: ["link", "chainlink", "linkusd", "linkusdt"],
@@ -103,6 +337,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "NEAR",
     name: "NEAR Protocol",
+    assetClass: "crypto",
     instrument: "NEAR_USD_SPOT",
     precision: 3,
     aliases: ["near", "near protocol", "nearusd", "nearusdt"],
@@ -111,6 +346,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "BNB",
     name: "BNB",
+    assetClass: "crypto",
     instrument: "BNB_USD_SPOT",
     precision: 2,
     aliases: ["bnb", "binance coin", "bnbusdt"],
@@ -119,6 +355,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "DOT",
     name: "Polkadot",
+    assetClass: "crypto",
     instrument: "DOT_USD_SPOT",
     precision: 3,
     aliases: ["dot", "polkadot", "dotusd", "dotusdt"],
@@ -127,6 +364,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "LTC",
     name: "Litecoin",
+    assetClass: "crypto",
     instrument: "LTC_USD_SPOT",
     precision: 2,
     aliases: ["ltc", "litecoin", "ltcusd", "ltcusdt"],
@@ -135,6 +373,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "BCH",
     name: "Bitcoin Cash",
+    assetClass: "crypto",
     instrument: "BCH_USD_SPOT",
     precision: 2,
     aliases: ["bch", "bitcoin cash", "bchusd", "bchusdt"],
@@ -143,6 +382,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "UNI",
     name: "Uniswap",
+    assetClass: "crypto",
     instrument: "UNI_USD_SPOT",
     precision: 3,
     aliases: ["uni", "uniswap", "uniusd", "uniusdt"],
@@ -151,6 +391,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "APT",
     name: "Aptos",
+    assetClass: "crypto",
     instrument: "APT_USD_SPOT",
     precision: 3,
     aliases: ["apt", "aptos", "aptusd", "aptusdt"],
@@ -159,6 +400,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "PEPE",
     name: "Pepe",
+    assetClass: "crypto",
     instrument: "PEPE_USD_SPOT",
     precision: 8,
     aliases: ["pepe", "pepeusd", "pepeusdt"],
@@ -167,6 +409,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "SHIB",
     name: "Shiba Inu",
+    assetClass: "crypto",
     instrument: "SHIB_USD_SPOT",
     precision: 6,
     aliases: ["shib", "shiba", "shiba inu", "shibusd", "shibusdt"],
@@ -175,6 +418,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "ARB",
     name: "Arbitrum",
+    assetClass: "crypto",
     instrument: "ARB_USD_SPOT",
     precision: 4,
     aliases: ["arb", "arbitrum", "arbusd", "arbusdt"],
@@ -183,6 +427,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "OP",
     name: "Optimism",
+    assetClass: "crypto",
     instrument: "OP_USD_SPOT",
     precision: 4,
     aliases: ["op", "optimism", "opusd", "opusdt"],
@@ -191,6 +436,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "RENDER",
     name: "Render",
+    assetClass: "crypto",
     instrument: "RENDER_USD_SPOT",
     precision: 3,
     aliases: ["render", "rndr", "renderusd", "renderusdt"],
@@ -199,6 +445,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "AAVE",
     name: "Aave",
+    assetClass: "crypto",
     instrument: "AAVE_USD_SPOT",
     precision: 2,
     aliases: ["aave", "aaveusd", "aaveusdt"],
@@ -207,6 +454,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "POL",
     name: "Polygon",
+    assetClass: "crypto",
     instrument: "POL_USD_SPOT",
     precision: 4,
     aliases: ["pol", "polygon", "matic", "polusd", "polusdt"],
@@ -215,6 +463,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "ATOM",
     name: "Cosmos",
+    assetClass: "crypto",
     instrument: "ATOM_USD_SPOT",
     precision: 3,
     aliases: ["atom", "cosmos", "atomusd", "atomusdt"],
@@ -223,6 +472,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "INJ",
     name: "Injective",
+    assetClass: "crypto",
     instrument: "INJ_USD_SPOT",
     precision: 3,
     aliases: ["inj", "injective", "injusd", "injusdt"],
@@ -231,6 +481,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "FIL",
     name: "Filecoin",
+    assetClass: "crypto",
     instrument: "FIL_USD_SPOT",
     precision: 3,
     aliases: ["fil", "filecoin", "filusd", "filusdt"],
@@ -239,6 +490,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "TIA",
     name: "Celestia",
+    assetClass: "crypto",
     instrument: "TIA_USD_SPOT",
     precision: 3,
     aliases: ["tia", "celestia", "tiausd", "tiausdt"],
@@ -247,6 +499,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "SEI",
     name: "Sei",
+    assetClass: "crypto",
     instrument: "SEI_USD_SPOT",
     precision: 4,
     aliases: ["sei", "seiusd", "seiusdt"],
@@ -255,6 +508,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "XLM",
     name: "Stellar",
+    assetClass: "crypto",
     instrument: "XLM_USD_SPOT",
     precision: 4,
     aliases: ["xlm", "stellar", "lumens", "xlmusd", "xlmusdt"],
@@ -263,6 +517,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "ALGO",
     name: "Algorand",
+    assetClass: "crypto",
     instrument: "ALGO_USD_SPOT",
     precision: 4,
     aliases: ["algo", "algorand", "algousd", "algousdt"],
@@ -271,6 +526,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "ICP",
     name: "Internet Computer",
+    assetClass: "crypto",
     instrument: "ICP_USD_SPOT",
     precision: 3,
     aliases: ["icp", "internet computer", "icpusd", "icpusdt"],
@@ -279,6 +535,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "KAS",
     name: "Kaspa",
+    assetClass: "crypto",
     instrument: "KAS_USD_SPOT",
     precision: 4,
     aliases: ["kas", "kaspa", "kasusdt"],
@@ -287,6 +544,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "CRV",
     name: "Curve DAO",
+    assetClass: "crypto",
     instrument: "CRV_USD_SPOT",
     precision: 4,
     aliases: ["crv", "curve", "crvusd", "crvusdt"],
@@ -295,6 +553,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "ENA",
     name: "Ethena",
+    assetClass: "crypto",
     instrument: "ENA_USD_SPOT",
     precision: 4,
     aliases: ["ena", "ethena", "enausd", "enausdt"],
@@ -303,6 +562,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "WLD",
     name: "Worldcoin",
+    assetClass: "crypto",
     instrument: "WLD_USD_SPOT",
     precision: 3,
     aliases: ["wld", "worldcoin", "wldusdt"],
@@ -311,6 +571,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "ONDO",
     name: "Ondo Finance",
+    assetClass: "crypto",
     instrument: "ONDO_USD_SPOT",
     precision: 4,
     aliases: ["ondo", "ondousd", "ondousdt"],
@@ -319,6 +580,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "TAO",
     name: "Bittensor",
+    assetClass: "crypto",
     instrument: "TAO_USD_SPOT",
     precision: 2,
     aliases: ["tao", "bittensor", "taousdt"],
@@ -327,6 +589,7 @@ var INSTRUMENT_CATALOG = [
   {
     asset: "FET",
     name: "Artificial Superintelligence",
+    assetClass: "crypto",
     instrument: "FET_USD_SPOT",
     precision: 4,
     aliases: ["fet", "fetch", "fetch.ai", "asi", "fetusd", "fetusdt"],
@@ -341,7 +604,7 @@ for (var i = 0; i < INSTRUMENT_CATALOG.length; i++) {
   CATALOG_BY_ASSET[item.asset] = item;
 }
 
-// Backward-compatible ASSET_DEFINITIONS dictionary (no emojis/logos per user request)
+// Backward-compatible ASSET_DEFINITIONS dictionary
 var ASSET_DEFINITIONS = {};
 for (var a in CATALOG_BY_ASSET) {
   var c = CATALOG_BY_ASSET[a];
@@ -350,7 +613,8 @@ for (var a in CATALOG_BY_ASSET) {
     symbol: c.asset,
     baseCurrency: "USD",
     precision: c.precision,
-    icon: ""
+    icon: "",
+    assetClass: c.assetClass || "crypto"
   };
 }
 
@@ -463,6 +727,7 @@ function createDefaultWatchlist() {
         name: item.name,
         instrument: item.instrument,
         precision: item.precision,
+        assetClass: item.assetClass || "crypto",
         providers: Object.assign({}, item.providers)
       });
     }
@@ -508,6 +773,7 @@ function deserializeWatchlist(rawString) {
           name: cat.name,
           instrument: cat.instrument,
           precision: cat.precision,
+          assetClass: cat.assetClass || "crypto",
           providers: Object.assign({}, cat.providers)
         });
       }
@@ -541,6 +807,7 @@ function deserializeWatchlist(rawString) {
         name: it.name || catalogEntry.name,
         instrument: catalogEntry.instrument,
         precision: catalogEntry.precision,
+        assetClass: catalogEntry.assetClass || "crypto",
         providers: Object.assign({}, catalogEntry.providers, it.providers || {})
       });
 
@@ -585,6 +852,7 @@ function addWatchlistMarket(watchlistObj, assetOrItem) {
     name: catalogItem.name,
     instrument: catalogItem.instrument,
     precision: catalogItem.precision,
+    assetClass: catalogItem.assetClass || "crypto",
     providers: Object.assign({}, catalogItem.providers)
   });
 
@@ -646,10 +914,13 @@ function reorderWatchlistMarket(watchlistObj, fromIndex, toIndex) {
 }
 
 function createEmptyQuote(asset, provider) {
-  var cat = getCatalogItem(asset) || { name: asset, symbol: asset, precision: 2, icon: "" };
+  var cat = getCatalogItem(asset) || { name: asset, symbol: asset, precision: 2, icon: "", assetClass: "crypto" };
   var prov = provider || "aggregate";
-  var inst = (asset === "HYPE" || prov === "hyperliquid" || (cat.instrument && cat.instrument.indexOf("PERP") !== -1)) ? (asset + "_USD_PERP") : (asset + "_USD_SPOT");
-  var pType = (asset === "HYPE" || prov === "hyperliquid" || (cat.instrument && cat.instrument.indexOf("PERP") !== -1)) ? INSTRUMENT_TYPES.PERP_MID : INSTRUMENT_TYPES.SPOT_LAST;
+  var isStock = (cat.assetClass === "stock" || (cat.instrument && cat.instrument.indexOf("STOCK") !== -1));
+  var isPerp = (!isStock && (asset === "HYPE" || prov === "hyperliquid" || (cat.instrument && cat.instrument.indexOf("PERP") !== -1)));
+
+  var inst = isStock ? (asset + "_USD_STOCK") : (isPerp ? (asset + "_USD_PERP") : (asset + "_USD_SPOT"));
+  var pType = isStock ? INSTRUMENT_TYPES.STOCK_LAST : (isPerp ? INSTRUMENT_TYPES.PERP_MID : INSTRUMENT_TYPES.SPOT_LAST);
 
   return {
     asset: asset,
@@ -657,11 +928,15 @@ function createEmptyQuote(asset, provider) {
     priceType: pType,
     name: cat.name,
     icon: "",
-    symbol: asset + "/USD",
+    symbol: isStock ? asset : (asset + "/USD"),
     provider: prov,
     exchange: providerDisplayName(prov),
     price: 0,
     change24h: 0,
+    changePercent24h: 0,
+    changeAmount: 0,
+    previousClose: 0,
+    open: 0,
     high24h: 0,
     low24h: 0,
     volume24h: 0,
@@ -670,7 +945,9 @@ function createEmptyQuote(asset, provider) {
     spread: 0,
     providerTimestamp: 0,
     receivedTimestamp: 0,
-    freshness: "OFFLINE"
+    freshness: "OFFLINE",
+    assetClass: isStock ? "stock" : "crypto",
+    marketState: "closed"
   };
 }
 
@@ -678,6 +955,7 @@ function providerDisplayName(id) {
   if (id === "binance") return "Binance";
   if (id === "coinbase") return "Coinbase";
   if (id === "hyperliquid") return "Hyperliquid";
+  if (id === "yahoo") return "Yahoo Finance";
   if (id === "aggregate") return "Reference Spot";
   return id || "Unknown";
 }
@@ -738,6 +1016,10 @@ function normalizeBinanceTicker(data, now) {
     exchange: "Binance",
     price: isNaN(price) ? 0 : price,
     change24h: isNaN(change24h) ? 0 : change24h,
+    changePercent24h: isNaN(change24h) ? 0 : change24h,
+    changeAmount: 0,
+    previousClose: 0,
+    open: 0,
     high24h: isNaN(high24h) ? 0 : high24h,
     low24h: isNaN(low24h) ? 0 : low24h,
     volume24h: isNaN(volume24h) ? 0 : volume24h,
@@ -746,7 +1028,9 @@ function normalizeBinanceTicker(data, now) {
     spread: (bid > 0 && ask >= bid) ? (ask - bid) : 0,
     providerTimestamp: eventTime,
     receivedTimestamp: recTime,
-    freshness: "LIVE"
+    freshness: "LIVE",
+    assetClass: "crypto",
+    marketState: "regular"
   };
 }
 
@@ -786,6 +1070,10 @@ function normalizeCoinbaseTicker(data, now) {
     exchange: "Coinbase",
     price: isNaN(price) ? 0 : price,
     change24h: isNaN(change24h) ? 0 : change24h,
+    changePercent24h: isNaN(change24h) ? 0 : change24h,
+    changeAmount: 0,
+    previousClose: open24h,
+    open: open24h,
     high24h: isNaN(high24h) ? 0 : high24h,
     low24h: isNaN(low24h) ? 0 : low24h,
     volume24h: isNaN(volume24h) ? 0 : volume24h,
@@ -794,7 +1082,9 @@ function normalizeCoinbaseTicker(data, now) {
     spread: (bid > 0 && ask >= bid) ? (ask - bid) : 0,
     providerTimestamp: isNaN(eventTime) ? recTime : eventTime,
     receivedTimestamp: recTime,
-    freshness: "LIVE"
+    freshness: "LIVE",
+    assetClass: "crypto",
+    marketState: "regular"
   };
 }
 
@@ -840,6 +1130,10 @@ function normalizeHyperliquidMeta(data, targetAssets, now) {
       exchange: "Hyperliquid",
       price: isNaN(price) ? 0 : price,
       change24h: isNaN(change24h) ? 0 : change24h,
+      changePercent24h: isNaN(change24h) ? 0 : change24h,
+      changeAmount: 0,
+      previousClose: prevDay,
+      open: prevDay,
       high24h: 0,
       low24h: 0,
       volume24h: isNaN(volume24h) ? 0 : volume24h,
@@ -848,17 +1142,266 @@ function normalizeHyperliquidMeta(data, targetAssets, now) {
       spread: (bid > 0 && ask >= bid) ? (ask - bid) : 0,
       providerTimestamp: recTime,
       receivedTimestamp: recTime,
-      freshness: "LIVE"
+      freshness: "LIVE",
+      assetClass: "crypto",
+      marketState: "regular"
     });
   }
 
   return results;
 }
 
+// Normalizes Yahoo Finance v8 chart API payload for Equities
+function normalizeYahooChart(data, now) {
+  if (!data || !data.chart || !Array.isArray(data.chart.result) || data.chart.result.length === 0) {
+    return null;
+  }
+  var result = data.chart.result[0];
+  if (!result || !result.meta) return null;
+  var meta = result.meta;
+  var symbol = String(meta.symbol || "").toUpperCase();
+  if (!symbol) return null;
+
+  var cat = getCatalogItem(symbol);
+  if (!cat) return null;
+
+  var recTime = now || Date.now();
+  var timestamps = result.timestamp || [];
+  var quoteData = (result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
+  var opens = quoteData.open || [];
+  var highs = quoteData.high || [];
+  var lows = quoteData.low || [];
+  var closes = quoteData.close || [];
+  var volumes = quoteData.volume || [];
+
+  // Find latest valid close price by scanning backwards
+  var price = 0;
+  var lastTimestampSec = 0;
+  for (var i = closes.length - 1; i >= 0; i--) {
+    var cVal = closes[i];
+    if (cVal !== null && cVal !== undefined && !isNaN(cVal) && Number(cVal) > 0) {
+      price = Number(cVal);
+      if (timestamps[i]) {
+        lastTimestampSec = Number(timestamps[i]);
+      }
+      break;
+    }
+  }
+
+  // Fallback to meta.regularMarketPrice if chart close array didn't yield a valid value
+  if (price <= 0 && meta.regularMarketPrice && !isNaN(meta.regularMarketPrice)) {
+    price = Number(meta.regularMarketPrice);
+  }
+  if (price <= 0) return null;
+
+  // Determine market state from meta.currentTradingPeriod
+  // currentTradingPeriod has { pre: { start, end }, regular: { start, end }, post: { start, end } } (in unix epoch seconds)
+  var marketState = "regular";
+  var nowSec = Math.floor(recTime / 1000);
+  var ctp = meta.currentTradingPeriod;
+  var regStart = 0;
+  var regEnd = 0;
+
+  if (ctp) {
+    if (ctp.regular && ctp.regular.start && ctp.regular.end) {
+      regStart = Number(ctp.regular.start);
+      regEnd = Number(ctp.regular.end);
+    }
+    var preStart = ctp.pre ? Number(ctp.pre.start) : 0;
+    var preEnd = ctp.pre ? Number(ctp.pre.end) : 0;
+    var postStart = ctp.post ? Number(ctp.post.start) : 0;
+    var postEnd = ctp.post ? Number(ctp.post.end) : 0;
+
+    if (regStart > 0 && nowSec >= regStart && nowSec < regEnd) {
+      marketState = "regular";
+    } else if (preStart > 0 && nowSec >= preStart && nowSec < preEnd) {
+      marketState = "preMarket";
+    } else if (postStart > 0 && nowSec >= postStart && nowSec < postEnd) {
+      marketState = "postMarket";
+    } else {
+      marketState = "closed";
+    }
+  }
+
+  // Determine regular-session open price from first regular-session OHLC bar (at or after regStart)
+  var openPrice = 0;
+  if (regStart > 0 && timestamps.length > 0) {
+    for (var j = 0; j < timestamps.length; j++) {
+      if (Number(timestamps[j]) >= regStart) {
+        if (opens[j] !== null && opens[j] !== undefined && !isNaN(opens[j]) && Number(opens[j]) > 0) {
+          openPrice = Number(opens[j]);
+        } else if (closes[j] !== null && closes[j] !== undefined && !isNaN(closes[j]) && Number(closes[j]) > 0) {
+          openPrice = Number(closes[j]);
+        }
+        break;
+      }
+    }
+  }
+  if (openPrice <= 0 && meta.regularMarketPrice) {
+    openPrice = Number(meta.regularMarketPrice);
+  }
+
+  // Determine reference close price for change calculation:
+  // - Pre-market: previous trading day's regular close
+  // - Regular session: previous trading day's regular close
+  // - Post-market: today's regular-session close (identified from chart data at or before regEnd)
+  var prevClose = 0;
+  if (marketState === "postMarket") {
+    if (regEnd > 0 && timestamps.length > 0) {
+      for (var k = timestamps.length - 1; k >= 0; k--) {
+        if (Number(timestamps[k]) <= regEnd) {
+          if (closes[k] !== null && closes[k] !== undefined && !isNaN(closes[k]) && Number(closes[k]) > 0) {
+            prevClose = Number(closes[k]);
+            break;
+          }
+        }
+      }
+    }
+    if (prevClose <= 0 && meta.regularMarketPrice && !isNaN(meta.regularMarketPrice)) {
+      prevClose = Number(meta.regularMarketPrice);
+    }
+  }
+
+  // Fallback to previous day's close for regular / pre-market / closed, or if post-market didn't locate a today close
+  if (prevClose <= 0) {
+    if (meta.previousClose !== null && meta.previousClose !== undefined && !isNaN(meta.previousClose) && Number(meta.previousClose) > 0) {
+      prevClose = Number(meta.previousClose);
+    } else if (meta.chartPreviousClose !== null && meta.chartPreviousClose !== undefined && !isNaN(meta.chartPreviousClose) && Number(meta.chartPreviousClose) > 0) {
+      prevClose = Number(meta.chartPreviousClose);
+    }
+  }
+
+  var changeAmount = 0;
+  var change24h = 0; // percentage change in Omarchy Market schema
+  if (prevClose > 0 && price > 0) {
+    changeAmount = price - prevClose;
+    change24h = (changeAmount / prevClose) * 100;
+  }
+
+  // High, Low, Volume
+  var high24h = 0;
+  var low24h = 0;
+  var volume24h = 0;
+
+  if (meta.regularMarketDayHigh && !isNaN(meta.regularMarketDayHigh)) {
+    high24h = Number(meta.regularMarketDayHigh);
+  }
+  if (meta.regularMarketDayLow && !isNaN(meta.regularMarketDayLow)) {
+    low24h = Number(meta.regularMarketDayLow);
+  }
+  if (meta.regularMarketVolume && !isNaN(meta.regularMarketVolume)) {
+    volume24h = Number(meta.regularMarketVolume);
+  }
+
+  // Fallback high/low/volume from today's bars if meta fields are missing/zero
+  if (high24h <= 0 || low24h <= 0) {
+    var computedHigh = -Infinity;
+    var computedLow = Infinity;
+    var computedVol = 0;
+    var startFilter = regStart > 0 ? regStart : 0;
+    for (var m = 0; m < timestamps.length; m++) {
+      if (Number(timestamps[m]) >= startFilter) {
+        if (highs[m] !== null && !isNaN(highs[m])) {
+          var h = Number(highs[m]);
+          if (h > computedHigh) computedHigh = h;
+        }
+        if (lows[m] !== null && !isNaN(lows[m])) {
+          var l = Number(lows[m]);
+          if (l > 0 && l < computedLow) computedLow = l;
+        }
+        if (volumes[m] !== null && !isNaN(volumes[m])) {
+          computedVol += Number(volumes[m]);
+        }
+      }
+    }
+    if (high24h <= 0 && computedHigh !== -Infinity) high24h = computedHigh;
+    if (low24h <= 0 && computedLow !== Infinity) low24h = computedLow;
+    if (volume24h <= 0 && computedVol > 0) volume24h = computedVol;
+  }
+
+  var eventTime = lastTimestampSec > 0 ? (lastTimestampSec * 1000) : (meta.regularMarketTime ? Number(meta.regularMarketTime) * 1000 : recTime);
+
+  return {
+    asset: symbol,
+    instrument: cat.instrument || (symbol + "_USD_STOCK"),
+    priceType: INSTRUMENT_TYPES.STOCK_LAST,
+    name: cat.name,
+    icon: "",
+    symbol: symbol,
+    provider: "yahoo",
+    exchange: cat.exchange || meta.exchangeName || "Yahoo Finance",
+    price: price,
+    change24h: isNaN(change24h) ? 0 : change24h,
+    changePercent24h: isNaN(change24h) ? 0 : change24h,
+    changeAmount: isNaN(changeAmount) ? 0 : changeAmount,
+    previousClose: prevClose,
+    open: openPrice > 0 ? openPrice : price,
+    high24h: high24h > 0 ? high24h : price,
+    low24h: low24h > 0 ? low24h : price,
+    volume24h: volume24h,
+    bid: price,
+    ask: price,
+    spread: 0,
+    providerTimestamp: eventTime,
+    receivedTimestamp: recTime,
+    freshness: "LIVE",
+    assetClass: "stock",
+    marketState: marketState
+  };
+}
+
+// Normalizes Yahoo candles payload
+function normalizeYahooCandles(data) {
+  if (!data || !data.chart || !Array.isArray(data.chart.result) || data.chart.result.length === 0) {
+    return [];
+  }
+  var result = data.chart.result[0];
+  if (!result || !Array.isArray(result.timestamp)) return [];
+
+  var timestamps = result.timestamp;
+  var quoteData = (result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
+  var opens = quoteData.open || [];
+  var highs = quoteData.high || [];
+  var lows = quoteData.low || [];
+  var closes = quoteData.close || [];
+  var volumes = quoteData.volume || [];
+
+  var list = [];
+  for (var i = 0; i < timestamps.length; i++) {
+    var c = closes[i];
+    if (c === null || c === undefined || isNaN(c)) continue;
+    var closeVal = Number(c);
+    var o = (opens[i] !== null && opens[i] !== undefined && !isNaN(opens[i])) ? Number(opens[i]) : closeVal;
+    var h = (highs[i] !== null && highs[i] !== undefined && !isNaN(highs[i])) ? Number(highs[i]) : Math.max(o, closeVal);
+    var l = (lows[i] !== null && lows[i] !== undefined && !isNaN(lows[i])) ? Number(lows[i]) : Math.min(o, closeVal);
+    var v = (volumes[i] !== null && volumes[i] !== undefined && !isNaN(volumes[i])) ? Number(volumes[i]) : 0;
+    var t = Number(timestamps[i]) * 1000;
+
+    list.push({
+      time: t,
+      open: o,
+      high: h,
+      low: l,
+      close: closeVal,
+      volume: v
+    });
+  }
+  return list;
+}
+
 // Explicit Reference Price Calculation
 function calculateReferenceQuote(asset, quotesByProvider, now) {
   var cat = getCatalogItem(asset);
+  var isStock = (cat && (cat.assetClass === "stock" || (cat.instrument && cat.instrument.indexOf("STOCK") !== -1)));
   var isPerpOnly = (asset === "HYPE" || (cat && cat.instrument && cat.instrument.indexOf("PERP") !== -1));
+
+  if (isStock) {
+    var yahooQuote = quotesByProvider["yahoo"];
+    if (yahooQuote && yahooQuote.price > 0 && getFreshness(yahooQuote.receivedTimestamp, now) !== "OFFLINE") {
+      return yahooQuote;
+    }
+    return createEmptyQuote(asset, "yahoo");
+  }
 
   if (isPerpOnly) {
     var hlQuote = quotesByProvider["hyperliquid"];
@@ -926,6 +1469,10 @@ function calculateReferenceQuote(asset, quotesByProvider, now) {
     exchange: "Reference Spot (" + spotQuotes.length + " feeds)",
     price: avgPrice,
     change24h: avgChange,
+    changePercent24h: avgChange,
+    changeAmount: 0,
+    previousClose: 0,
+    open: 0,
     high24h: maxHigh > 0 ? maxHigh : avgPrice,
     low24h: minLow !== Infinity ? minLow : avgPrice,
     volume24h: totalVolume,
@@ -934,7 +1481,9 @@ function calculateReferenceQuote(asset, quotesByProvider, now) {
     spread: (bestBid > 0 && bestAsk !== Infinity && bestAsk >= bestBid) ? (bestAsk - bestBid) : 0,
     providerTimestamp: latestRec,
     receivedTimestamp: latestRec,
-    freshness: getFreshness(latestRec, now)
+    freshness: getFreshness(latestRec, now),
+    assetClass: "crypto",
+    marketState: "regular"
   };
 }
 

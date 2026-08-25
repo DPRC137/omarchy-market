@@ -29,8 +29,11 @@ Panel {
   readonly property var binanceQuote: marketService ? marketService.getProviderQuote(selectedAsset, "binance") : null
   readonly property var coinbaseQuote: marketService ? marketService.getProviderQuote(selectedAsset, "coinbase") : null
   readonly property var hyperliquidQuote: marketService ? marketService.getProviderQuote(selectedAsset, "hyperliquid") : null
+  readonly property var yahooQuote: marketService ? marketService.getProviderQuote(selectedAsset, "yahoo") : null
   readonly property var activeCandles: marketService ? marketService.getCandles(selectedAsset, selectedTimeframe) : []
 
+  readonly property var selectedCatItem: MarketModel.getCatalogItem(selectedAsset)
+  readonly property bool isStock: selectedCatItem && selectedCatItem.assetClass === "stock"
   readonly property bool isSelectedInWatchlist: marketService ? marketService.isInWatchlist(selectedAsset) : (assets.indexOf(selectedAsset) !== -1)
 
   function open() {
@@ -303,7 +306,7 @@ Panel {
 
                 Text {
                   anchors.fill: parent
-                  text: "Search market or alias (e.g. dogecoin, SOL)..."
+                  text: "Search market or alias (e.g. AAPL, dogecoin, NVDA)..."
                   font.family: Style.font.family
                   font.pixelSize: Style.font.bodySmall
                   color: Color.muted
@@ -333,7 +336,7 @@ Panel {
             }
 
             Text {
-              text: "No supported crypto markets found"
+              text: "No supported markets found"
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
               color: Color.muted
@@ -378,6 +381,14 @@ Panel {
                       font.family: Style.font.family
                       font.pixelSize: Style.font.caption
                       color: Color.muted
+                    }
+
+                    Text {
+                      text: "• " + (catItem.assetClass === "stock" ? "STOCK" : "CRYPTO")
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
+                      font.bold: true
+                      color: catItem.assetClass === "stock" ? Color.accent : Color.muted
                     }
                   }
 
@@ -843,10 +854,50 @@ Panel {
               width: parent.width
               spacing: Style.space(5)
 
-              // Binance Row
+              // Yahoo Row (for Stocks)
+              Item {
+                width: parent.width
+                height: yahooLeft.implicitHeight
+                visible: root.isStock
+
+                Row {
+                  id: yahooLeft
+                  anchors.left: parent.left
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(6)
+                  Rectangle {
+                    width: Style.space(8); height: Style.space(8); radius: Style.space(4)
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: root.yahooQuote ? "#26a69a" : Color.muted
+                  }
+                  Text {
+                    text: "Yahoo (" + (root.activeQuote.marketState === "regular" ? "Regular" : (root.activeQuote.marketState === "preMarket" ? "Pre-Mkt" : (root.activeQuote.marketState === "postMarket" ? "Post-Mkt" : "Closed"))) + ")"
+                    width: Style.space(120)
+                    font.pixelSize: Style.font.caption
+                    color: Color.foreground
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                  Text {
+                    text: root.yahooQuote ? MarketModel.formatPrice(root.yahooQuote.price) : "--"
+                    font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                }
+
+                Text {
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: root.yahooQuote ? MarketModel.formatPercentage(root.yahooQuote.change24h) : ""
+                  font.pixelSize: Style.font.caption
+                  color: (root.yahooQuote && root.yahooQuote.change24h >= 0) ? "#26a69a" : "#ef5350"
+                }
+              }
+
+              // Binance Row (for Crypto)
               Item {
                 width: parent.width
                 height: binanceLeft.implicitHeight
+                visible: !root.isStock
                 
                 Row {
                   id: binanceLeft
@@ -875,10 +926,11 @@ Panel {
                 }
               }
 
-              // Coinbase Row
+              // Coinbase Row (for Crypto)
               Item {
                 width: parent.width
                 height: coinbaseLeft.implicitHeight
+                visible: !root.isStock
                 
                 Row {
                   id: coinbaseLeft
@@ -907,10 +959,11 @@ Panel {
                 }
               }
 
-              // Hyperliquid Row
+              // Hyperliquid Row (for Crypto)
               Item {
                 width: parent.width
                 height: hyperliquidLeft.implicitHeight
+                visible: !root.isStock
                 
                 Row {
                   id: hyperliquidLeft

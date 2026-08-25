@@ -25,7 +25,10 @@ Item {
 
   function updateSubscriptions(assetsList) {
     if (!assetsList || !Array.isArray(assetsList)) return
-    root.targetAssets = assetsList.filter(function(a) { return a !== "HYPE" })
+    root.targetAssets = assetsList.filter(function(a) {
+      var cat = MarketModel.getCatalogItem(a)
+      return cat && cat.assetClass === "crypto" && a !== "HYPE"
+    })
     if (bridgeProcess.running) {
       bridgeProcess.write(JSON.stringify({
         action: "set_subscriptions",
@@ -133,7 +136,8 @@ Item {
   }
 
   function fetchCandles(asset, timeframe) {
-    if (asset === "HYPE" || isFetchingCandles) return
+    var cat = MarketModel.getCatalogItem(asset)
+    if (!cat || cat.assetClass !== "crypto" || asset === "HYPE" || isFetchingCandles) return
     isFetchingCandles = true
 
     var productId = asset + "-USD"
