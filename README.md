@@ -2,7 +2,7 @@
 
 A production-quality, native financial market data ticker and compact terminal plugin for **Omarchy Quattro**.
 
-![Preview](assets/preview.png)
+![Preview](preview.png)
 
 ---
 
