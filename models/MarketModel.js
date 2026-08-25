@@ -692,7 +692,7 @@ function searchCatalog(query) {
     if (isAliasPrefix) continue;
 
     // Check substring matches
-    if (symLower.indexOf(raw) !== -1 || nameLower.indexOf(raw) !== -1) {
+    if (symLower.indexOf(raw) !== -1 || nameLower.indexOf(raw) !== -1 || (item.assetClass && (raw === "stock" || raw === "stocks" || raw === "equity" || raw === "equities") && item.assetClass === "stock") || (item.assetClass && (raw === "crypto" || raw === "cryptos" || raw === "coin" || raw === "coins") && item.assetClass === "crypto")) {
       substringMatches.push(item);
       continue;
     }

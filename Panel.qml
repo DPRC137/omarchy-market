@@ -318,6 +318,87 @@ Panel {
             }
           }
 
+          // Quick-Add Stock Suggestions (when search is empty)
+          Column {
+            width: parent.width
+            spacing: Style.space(6)
+            visible: root.searchQuery.length === 0
+
+            Text {
+              text: "FEATURED STOCKS"
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              color: Color.muted
+            }
+
+            Flow {
+              width: parent.width
+              spacing: Style.space(6)
+
+              Repeater {
+                model: ["AAPL", "NVDA", "MSFT", "TSLA", "AMZN", "GOOGL", "META", "AMD"]
+
+                Item {
+                  width: chipSurface.implicitWidth
+                  height: Style.space(24)
+
+                  readonly property string chipAsset: modelData
+                  readonly property var catItem: MarketModel.getCatalogItem(chipAsset)
+                  readonly property bool alreadyInWatchlist: root.marketService ? root.marketService.isInWatchlist(chipAsset) : (root.assets.indexOf(chipAsset) !== -1)
+                  readonly property bool isFull: root.assets.length >= 20
+
+                  HoverHandler { id: chipHover }
+
+                  BorderSurface {
+                    id: chipSurface
+                    anchors.fill: parent
+                    implicitWidth: chipRow.implicitWidth + Style.space(12)
+                    radius: Style.space(4)
+                    color: alreadyInWatchlist ? Qt.rgba(0.15, 0.65, 0.60, 0.15) : (chipHover.hovered ? Style.hoverFillAlpha : Style.normalFillAlpha)
+                    borderSpec: Border.flat(alreadyInWatchlist ? "#26a69a" : (chipHover.hovered ? Color.accent : Color.muted), 1)
+
+                    Row {
+                      id: chipRow
+                      anchors.centerIn: parent
+                      spacing: Style.space(4)
+
+                      Text {
+                        text: chipAsset
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.caption
+                        font.bold: true
+                        color: alreadyInWatchlist ? "#26a69a" : Color.foreground
+                        anchors.verticalCenter: parent.verticalCenter
+                      }
+
+                      Text {
+                        text: alreadyInWatchlist ? "✓" : "+"
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.caption
+                        font.bold: true
+                        color: alreadyInWatchlist ? "#26a69a" : Color.accent
+                        anchors.verticalCenter: parent.verticalCenter
+                      }
+                    }
+
+                    MouseArea {
+                      anchors.fill: parent
+                      enabled: !alreadyInWatchlist && !isFull
+                      cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                      onClicked: {
+                        if (root.marketService) {
+                          root.marketService.addMarket(chipAsset)
+                          root.selectedAsset = chipAsset
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
           // Search Results Dropdown / List (when typing)
           Column {
             width: parent.width
