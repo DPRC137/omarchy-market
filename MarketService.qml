@@ -214,6 +214,14 @@ Item {
     }
   }
 
+  function fetchQuote(asset) {
+    if (!asset) return
+    var cat = MarketModel.getCatalogItem(asset)
+    if (cat && cat.assetClass === "stock") {
+      yahooProvider.fetchQuote(asset)
+    }
+  }
+
   function refresh() {
     binanceProvider.fetchSnapshot()
     coinbaseProvider.fetchSnapshot()

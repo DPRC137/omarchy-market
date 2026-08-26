@@ -8,11 +8,12 @@ BarWidget {
   moduleName: "io.github.dpr.omarchy-market"
 
   readonly property var marketService: (bar && bar.shell) ? bar.shell.serviceFor("io.github.dpr.omarchy-market") : null
+  readonly property int updateRevision: marketService ? marketService.updateRevision : 0
   readonly property var watchlist: (marketService && marketService.watchlist) ? marketService.watchlist : ["BTC", "ETH", "SOL", "HYPE"]
 
   property int currentAssetIndex: 0
   readonly property string currentAsset: (watchlist && watchlist.length > 0) ? (watchlist[currentAssetIndex % watchlist.length] || "BTC") : "BTC"
-  readonly property var currentQuote: marketService ? marketService.getQuote(currentAsset, "aggregate") : MarketModel.createEmptyQuote(currentAsset, "aggregate")
+  readonly property var currentQuote: (marketService && updateRevision >= 0) ? marketService.getQuote(currentAsset, "aggregate") : MarketModel.createEmptyQuote(currentAsset, "aggregate")
 
   // Default to clean cycling single-asset display so it never collides with center clock
   property bool multiAssetMode: setting("multiAsset", false)

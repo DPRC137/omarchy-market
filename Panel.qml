@@ -22,15 +22,16 @@ Panel {
   property string searchQuery: ""
 
   readonly property var marketService: (bar && bar.shell) ? bar.shell.serviceFor("io.github.dpr.omarchy-market") : null
+  readonly property int updateRevision: marketService ? marketService.updateRevision : 0
   readonly property var assets: (marketService && marketService.watchlist && marketService.watchlist.length > 0) ? marketService.watchlist : ["BTC", "ETH", "SOL", "HYPE"]
   readonly property var structuredWatchlist: (marketService && marketService.structuredWatchlist) ? marketService.structuredWatchlist : MarketModel.createDefaultWatchlist()
 
-  readonly property var activeQuote: marketService ? marketService.getQuote(selectedAsset, "aggregate") : MarketModel.createEmptyQuote(selectedAsset, "aggregate")
-  readonly property var binanceQuote: marketService ? marketService.getProviderQuote(selectedAsset, "binance") : null
-  readonly property var coinbaseQuote: marketService ? marketService.getProviderQuote(selectedAsset, "coinbase") : null
-  readonly property var hyperliquidQuote: marketService ? marketService.getProviderQuote(selectedAsset, "hyperliquid") : null
-  readonly property var yahooQuote: marketService ? marketService.getProviderQuote(selectedAsset, "yahoo") : null
-  readonly property var activeCandles: marketService ? marketService.getCandles(selectedAsset, selectedTimeframe) : []
+  readonly property var activeQuote: (marketService && updateRevision >= 0) ? marketService.getQuote(selectedAsset, "aggregate") : MarketModel.createEmptyQuote(selectedAsset, "aggregate")
+  readonly property var binanceQuote: (marketService && updateRevision >= 0) ? marketService.getProviderQuote(selectedAsset, "binance") : null
+  readonly property var coinbaseQuote: (marketService && updateRevision >= 0) ? marketService.getProviderQuote(selectedAsset, "coinbase") : null
+  readonly property var hyperliquidQuote: (marketService && updateRevision >= 0) ? marketService.getProviderQuote(selectedAsset, "hyperliquid") : null
+  readonly property var yahooQuote: (marketService && updateRevision >= 0) ? marketService.getProviderQuote(selectedAsset, "yahoo") : null
+  readonly property var activeCandles: (marketService && updateRevision >= 0) ? marketService.getCandles(selectedAsset, selectedTimeframe) : []
 
   readonly property var selectedCatItem: MarketModel.getCatalogItem(selectedAsset)
   readonly property bool isStock: selectedCatItem && selectedCatItem.assetClass === "stock"
@@ -39,8 +40,9 @@ Panel {
   function open() {
     root.controller.show()
     if (marketService) {
-      marketService.refresh()
+      marketService.fetchQuote(selectedAsset)
       marketService.fetchCandles(selectedAsset, selectedTimeframe)
+      marketService.refresh()
     }
   }
 
@@ -56,7 +58,10 @@ Panel {
   }
 
   onSelectedAssetChanged: {
-    if (marketService) marketService.fetchCandles(selectedAsset, selectedTimeframe)
+    if (marketService) {
+      marketService.fetchQuote(selectedAsset)
+      marketService.fetchCandles(selectedAsset, selectedTimeframe)
+    }
   }
 
   onSelectedTimeframeChanged: {

@@ -71,6 +71,20 @@ Item {
     fetchSnapshot()
   }
 
+  // Fetch an individual quote on demand (e.g. when selected in UI)
+  function fetchQuote(asset) {
+    if (!asset || !root.active) return
+    var sym = String(asset).trim().toUpperCase()
+    var cat = MarketModel.getCatalogItem(sym)
+    if (!cat || cat.assetClass !== "stock") return
+    enqueueTask({
+      type: "quote",
+      asset: sym,
+      priority: 10
+    })
+    processQueue()
+  }
+
   // Enqueue a full snapshot of quotes across subscribed stocks
   function fetchSnapshot() {
     if (!root.active || root.targetAssets.length === 0) return
