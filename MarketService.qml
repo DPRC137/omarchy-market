@@ -146,11 +146,53 @@ Item {
     root.quoteUpdated(asset, getQuote(asset, preferredProvider))
   }
 
+  // Historical candle request generation tracking & deterministic provider state
+  property int currentCandleRequestId: 0
+  property var pendingCandleRequests: ({})
+  property var candleRequestProviders: ({})
+
+  function getHistoricalCandleProvider(asset, timeframe) {
+    var cat = MarketModel.getCatalogItem(asset)
+    if (cat && cat.assetClass === "stock") {
+      return "yahoo"
+    }
+    var isPerpOnly = (asset === "HYPE" || (cat && cat.instrument && cat.instrument.indexOf("PERP") !== -1))
+    if (isPerpOnly) {
+      return "hyperliquid"
+    }
+    // Spot crypto: Binance is authoritative primary provider
+    return "binance"
+  }
+
   function handleCandles(providerId, asset, timeframe, list) {
+    var key = asset + "_" + timeframe
+    var expectedInfo = candleRequestProviders[key]
+
+    // Check if response is empty or failed and eligible for Hyperliquid fallback
+    if ((!list || list.length === 0) && providerId === "binance" && expectedInfo && !expectedInfo.isFallback) {
+      var cat = MarketModel.getCatalogItem(asset)
+      if (cat && cat.assetClass === "crypto" && asset !== "HYPE") {
+        console.log("[Candles] Primary provider binance returned empty for " + key + ". Invoking Hyperliquid fallback.")
+        var nextCp = Object.assign({}, candleRequestProviders)
+        nextCp[key] = { provider: "hyperliquid", isFallback: true, reqId: expectedInfo.reqId }
+        candleRequestProviders = nextCp
+        hyperliquidProvider.fetchCandles(asset, timeframe)
+        return
+      }
+    }
+
+    if (!list || list.length === 0) {
+      console.warn("[Candles] No candle bars returned for " + key + " from " + providerId)
+      return
+    }
+
+    // Populate cache and notify via single canonical reactive path
     var cMap = Object.assign({}, candleStore)
-    cMap[asset + "_" + timeframe] = list
+    cMap[key] = list
     candleStore = cMap
+    console.log("[Candles] Received " + list.length + " bars for " + key + " from " + providerId)
     root.candlesUpdated(asset, timeframe, list)
+    root.updateRevision++ // Single canonical reactive trigger for activeCandles
   }
 
   Timer {
@@ -199,18 +241,26 @@ Item {
       root.candlesUpdated(asset, tf, candleStore[key])
       return
     }
-    var cat = MarketModel.getCatalogItem(asset)
-    if (cat && cat.assetClass === "stock") {
+
+    root.currentCandleRequestId++
+    var reqId = root.currentCandleRequestId
+    var pMap = Object.assign({}, root.pendingCandleRequests)
+    pMap[key] = reqId
+    root.pendingCandleRequests = pMap
+
+    var provider = getHistoricalCandleProvider(asset, tf)
+    var cpMap = Object.assign({}, root.candleRequestProviders)
+    cpMap[key] = { provider: provider, isFallback: false, reqId: reqId }
+    root.candleRequestProviders = cpMap
+
+    console.log("[Candles] Dispatched request #" + reqId + " for " + key + " to " + provider)
+
+    if (provider === "yahoo") {
       yahooProvider.fetchCandles(asset, tf)
-      return
-    }
-    var isPerpOnly = (asset === "HYPE" || (cat && cat.instrument && cat.instrument.indexOf("PERP") !== -1))
-    if (isPerpOnly) {
+    } else if (provider === "hyperliquid") {
       hyperliquidProvider.fetchCandles(asset, tf)
-    } else {
+    } else if (provider === "binance") {
       binanceProvider.fetchCandles(asset, tf)
-      coinbaseProvider.fetchCandles(asset, tf)
-      hyperliquidProvider.fetchCandles(asset, tf)
     }
   }
 
@@ -219,6 +269,14 @@ Item {
     var cat = MarketModel.getCatalogItem(asset)
     if (cat && cat.assetClass === "stock") {
       yahooProvider.fetchQuote(asset)
+    }
+  }
+
+  function searchYahooMarkets(query, callback) {
+    if (yahooProvider) {
+      yahooProvider.searchSymbols(query, callback)
+    } else if (callback) {
+      callback([])
     }
   }
 

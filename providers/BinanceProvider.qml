@@ -129,20 +129,29 @@ Item {
                 cMap[asset + "_" + timeframe] = list
                 candles = cMap
                 root.candlesReceived(asset, timeframe, list)
+                return
               }
             } catch (e) {
               console.warn("BinanceProvider: candle parse error:", e)
             }
           }
+          root.candlesReceived(asset, timeframe, [])
         }
       }
-      xhr.onerror = function() { root.isFetchingCandles = false }
-      xhr.ontimeout = function() { root.isFetchingCandles = false }
+      xhr.onerror = function() {
+        root.isFetchingCandles = false
+        root.candlesReceived(asset, timeframe, [])
+      }
+      xhr.ontimeout = function() {
+        root.isFetchingCandles = false
+        root.candlesReceived(asset, timeframe, [])
+      }
       xhr.open("GET", url)
       xhr.send()
     } catch (err) {
       isFetchingCandles = false
       console.warn("BinanceProvider: candle fetch failed:", err)
+      root.candlesReceived(asset, timeframe, [])
     }
   }
 

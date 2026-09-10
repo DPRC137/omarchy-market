@@ -1,4 +1,4 @@
-# Omarchy Market (`io.github.dpr.omarchy-market`) v1.2.0
+# Omarchy Market (`io.github.dpr.omarchy-market`) v1.2.1
 
 A production-quality, native financial market data ticker and compact terminal plugin for **Omarchy Quattro**.
 
@@ -11,27 +11,31 @@ A production-quality, native financial market data ticker and compact terminal p
 - **Dynamic Watchlist & Market Catalog**:
   - Add, remove, and reorder up to **20 crypto & stock markets**.
   - Curated US equity coverage (e.g. `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`, `AVGO`, `AMD`, etc.).
+  - **Dynamic Stock Search**: Search and add arbitrary stocks and ETFs beyond the static catalog via unauthenticated Yahoo Finance search with clean, isolated persistence.
   - Integrated search engine with alias resolution (e.g. `apple` → `AAPL`, `nvidia` → `NVDA`, `dogecoin` → `DOGE`, `bitcoin` → `BTC`, `ether` → `ETH`).
   - Locally persisted via Qt `Settings` with automatic migration and schema versioning.
-  - Horizontally scrollable asset tab bar that adapts gracefully without expanding or crowding the bar.
+  - Horizontally scrollable asset tab bar with reactive gradient edge-fade scroll affordances that indicate available scrollable content.
 - **Native Quattro Watchlist Manager**:
   - Dedicated `⚙` settings control adjacent to asset tabs.
-  - Live search dropdown with instant `+ Add` action for catalog markets and asset class tags (`STOCK` / `CRYPTO`).
+  - Live search dropdown with instant `+ Add` action for catalog and remote stock search results with asset class tags (`STOCK` / `CRYPTO`).
   - Active watchlist list with `↑` / `↓` reordering and `✕` deletion.
 - **Live Streaming Multi-Provider Feeds**:
   - **Yahoo Finance**: Direct HTTP Chart API integration with strict rate-limiting serialization and session handling (Regular, Pre-Market, Post-Market, Closed).
   - **Binance**: Public spot ticker WebSocket streams & REST klines with dynamic subscriptions.
-  - **Coinbase**: Advanced Trade public ticker WebSocket feeds with dynamic IPC channel subscriptions.
+  - **Coinbase**: Advanced Trade public ticker WebSocket feeds with dynamic IPC channel subscriptions. Unsupported historical candle granularities (4H, 1W) are cleanly blocked at provider entry.
   - **Hyperliquid**: Real-time mid prices & market contexts (native DEX home of `HYPE`).
 - **Distinct Instrument & Pricing Engine**:
   - Distinguishes spot markets (`BTC/USDT`, `BTC/USD`), equities (`AAPL`, `NVDA`), and perpetuals (`HYPE`, `BTC-PERP`).
   - Calculates Reference Spot Price across active spot feeds without cross-market distortion.
   - Routes equities to Yahoo and DEX-native tokens directly to their native feeds.
+  - **Deterministic Historical Candle Routing**: Centralized historical provider resolution (Spot Crypto -> Binance with Hyperliquid fallback; Perps -> Hyperliquid; Equities -> Yahoo) avoiding multi-provider data races and payload collisions.
 - **Compact Market Terminal Panel**:
   - Large price display with color-coded 24h change & freshness indicator (`LIVE`, `STALE`, `OFFLINE`).
   - 24h High, Low, and USD Volume statistics.
   - Multi-exchange comparison table showing live prices across Yahoo Finance (for stocks) or Binance, Coinbase, and Hyperliquid (for crypto).
   - Native QML Canvas sparkline chart with timeframe selectors (`1H`, `4H`, `1D`, `1W`).
+  - **Native Chart Hover Inspection**: Crosshair hairline, highlighted data point glow, and formatted date/time and price badge without external charting libraries.
+  - Subdued baseline loading state eliminating artificial 3-point synthetic lines on asset or timeframe switches.
   - Single-click `+ Add to Watchlist` action on the asset header.
 - **Zero Cost & Zero Daemon**:
   - $0 operating cost, zero API keys required, zero paid backends.

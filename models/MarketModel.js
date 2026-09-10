@@ -620,11 +620,37 @@ for (var a in CATALOG_BY_ASSET) {
 
 var DEFAULT_ASSETS = ["BTC", "ETH", "SOL", "HYPE"];
 
+// Dynamic instrument registry for discovered stocks (separate from static catalog)
+var DYNAMIC_INSTRUMENTS = {};
+
+function registerDynamicInstrument(item) {
+  if (!item || !item.asset) return null;
+  var sym = String(item.asset).trim().toUpperCase();
+  if (!sym) return null;
+  var entry = {
+    asset: sym,
+    name: item.name || sym,
+    assetClass: item.assetClass || "stock",
+    instrument: item.instrument || (sym + "_USD_STOCK"),
+    exchange: item.exchange || "US",
+    precision: (typeof item.precision === "number") ? item.precision : 2,
+    aliases: item.aliases || [sym.toLowerCase()],
+    providers: Object.assign({ yahoo: sym }, item.providers || {})
+  };
+  DYNAMIC_INSTRUMENTS[sym] = entry;
+  return entry;
+}
+
+function clearDynamicInstruments() {
+  DYNAMIC_INSTRUMENTS = {};
+}
+
 function getCatalogItem(assetOrQuery) {
   if (!assetOrQuery) return null;
   var q = String(assetOrQuery).trim();
   var upper = q.toUpperCase();
   if (CATALOG_BY_ASSET[upper]) return CATALOG_BY_ASSET[upper];
+  if (DYNAMIC_INSTRUMENTS[upper]) return DYNAMIC_INSTRUMENTS[upper];
 
   var lower = q.toLowerCase();
   for (var i = 0; i < INSTRUMENT_CATALOG.length; i++) {
@@ -636,6 +662,13 @@ function getCatalogItem(assetOrQuery) {
       for (var k = 0; k < item.aliases.length; k++) {
         if (item.aliases[k] === lower) return item;
       }
+    }
+  }
+
+  for (var dynSym in DYNAMIC_INSTRUMENTS) {
+    var dynItem = DYNAMIC_INSTRUMENTS[dynSym];
+    if (dynItem.asset.toLowerCase() === lower || dynItem.name.toLowerCase() === lower) {
+      return dynItem;
     }
   }
   return null;
@@ -799,6 +832,17 @@ function deserializeWatchlist(rawString) {
       if (!assetKey || seen[assetKey]) continue;
 
       var catalogEntry = getCatalogItem(assetKey);
+      if (!catalogEntry && it.assetClass === "stock") {
+        catalogEntry = registerDynamicInstrument({
+          asset: assetKey,
+          name: it.name || assetKey,
+          assetClass: "stock",
+          instrument: it.instrument || (assetKey + "_USD_STOCK"),
+          exchange: it.exchange || "US",
+          precision: typeof it.precision === "number" ? it.precision : 2,
+          providers: it.providers || { yahoo: assetKey }
+        });
+      }
       if (!catalogEntry) continue; // Reject invalid/unsupported markets
 
       seen[assetKey] = true;
@@ -835,6 +879,9 @@ function addWatchlistMarket(watchlistObj, assetOrItem) {
 
   var targetAsset = (typeof assetOrItem === "object" && assetOrItem.asset) ? assetOrItem.asset : assetOrItem;
   var catalogItem = getCatalogItem(targetAsset);
+  if (!catalogItem && typeof assetOrItem === "object" && assetOrItem.asset && assetOrItem.assetClass === "stock") {
+    catalogItem = registerDynamicInstrument(assetOrItem);
+  }
   if (!catalogItem) {
     return { success: false, reason: "INVALID_MARKET", watchlist: current };
   }

@@ -71,6 +71,71 @@ Item {
     fetchSnapshot()
   }
 
+  property int searchRequestIdCounter: 0
+  property int activeSearchRequestId: 0
+
+  function searchSymbols(query, callback) {
+    if (!query || !query.trim()) {
+      if (callback) callback([])
+      return
+    }
+    var q = query.trim()
+    root.searchRequestIdCounter++
+    var reqId = root.searchRequestIdCounter
+    root.activeSearchRequestId = reqId
+
+    var url = "https://query1.finance.yahoo.com/v1/finance/search?q=" + encodeURIComponent(q) + "&quotesCount=8&newsCount=0"
+    try {
+      var xhr = new XMLHttpRequest()
+      xhr.timeout = 5000
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+          // Discard if a newer search request was initiated (out-of-order protection)
+          if (reqId !== root.activeSearchRequestId) {
+            return
+          }
+          if (xhr.status === 200) {
+            try {
+              var data = JSON.parse(xhr.responseText)
+              var rawQuotes = data.quotes || []
+              var filtered = []
+              for (var i = 0; i < rawQuotes.length; i++) {
+                var item = rawQuotes[i]
+                if (!item || !item.symbol) continue
+                // Guardrail: Only accept EQUITY and ETF
+                if (item.quoteType !== "EQUITY" && item.quoteType !== "ETF") continue
+                var sym = String(item.symbol).toUpperCase()
+                filtered.push({
+                  asset: sym,
+                  name: item.shortname || item.longname || sym,
+                  assetClass: "stock",
+                  instrument: sym + "_USD_STOCK",
+                  exchange: item.exchDisp || item.exchange || "US",
+                  quoteType: item.quoteType,
+                  precision: 2,
+                  providers: { yahoo: sym }
+                })
+              }
+              if (callback) callback(filtered)
+            } catch (e) {
+              console.warn("YahooProvider: search parse error:", e)
+              if (callback) callback([])
+            }
+          } else {
+            if (callback) callback([])
+          }
+        }
+      }
+      xhr.onerror = function() { if (callback) callback([]) }
+      xhr.ontimeout = function() { if (callback) callback([]) }
+      xhr.open("GET", url)
+      xhr.setRequestHeader("User-Agent", root.userAgent)
+      xhr.send()
+    } catch (err) {
+      if (callback) callback([])
+    }
+  }
+
   // Fetch an individual quote on demand (e.g. when selected in UI)
   function fetchQuote(asset) {
     if (!asset || !root.active) return

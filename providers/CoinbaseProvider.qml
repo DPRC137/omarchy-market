@@ -142,9 +142,14 @@ Item {
 
     var productId = asset + "-USD"
     var granularity = 3600 // 1H
-    if (timeframe === "4H") granularity = 14400
-    else if (timeframe === "1D") granularity = 86400
-    else if (timeframe === "1W") granularity = 86400 * 7
+    if (timeframe === "4H" || timeframe === "1W") {
+      // Coinbase Exchange API strictly does not support 4H or 1W granularities
+      root.isFetchingCandles = false
+      console.warn("CoinbaseProvider: unsupported timeframe for historical candles (" + timeframe + "), skipping request")
+      return
+    } else if (timeframe === "1D") {
+      granularity = 86400
+    }
 
     var url = "https://api.exchange.coinbase.com/products/" + productId + "/candles?granularity=" + granularity
     try {

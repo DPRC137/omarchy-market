@@ -31,6 +31,7 @@ node tests/test_fixtures.js
 node tests/test_subscriptions.js
 node tests/test_yahoo_scheduler.js
 node tests/test_runtime_faults.js
+node tests/test_v121_regressions.js
 
 echo -e "\n4. Running real Quickshell runtime audit..."
 timeout 15s quickshell -p test_runtime.qml || true

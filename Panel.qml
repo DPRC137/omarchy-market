@@ -20,6 +20,48 @@ Panel {
   property string selectedTimeframe: "1H"
   property bool watchlistManagerOpen: false
   property string searchQuery: ""
+  property var remoteSearchResults: []
+
+  Timer {
+    id: remoteSearchDebounceTimer
+    interval: 300
+    repeat: false
+    onTriggered: {
+      var q = root.searchQuery.trim()
+      if (!q || q.length < 2) {
+        root.remoteSearchResults = []
+        return
+      }
+      if (root.marketService) {
+        root.marketService.searchYahooMarkets(q, function(results) {
+          if (root.searchQuery.trim() === q) {
+            var local = root.marketService.searchMarkets(q)
+            var localSymbols = {}
+            for (var i = 0; i < local.length; i++) {
+              localSymbols[local[i].asset] = true
+            }
+            var uniqueRemote = []
+            for (var j = 0; j < results.length; j++) {
+              var sym = results[j].asset
+              if (!localSymbols[sym]) {
+                uniqueRemote.push(results[j])
+              }
+            }
+            root.remoteSearchResults = uniqueRemote
+          }
+        })
+      }
+    }
+  }
+
+  onSearchQueryChanged: {
+    root.remoteSearchResults = []
+    if (root.searchQuery.trim().length >= 2) {
+      remoteSearchDebounceTimer.restart()
+    } else {
+      remoteSearchDebounceTimer.stop()
+    }
+  }
 
   readonly property var marketService: (bar && bar.shell) ? bar.shell.serviceFor("io.github.dpr.omarchy-market") : null
   readonly property int updateRevision: marketService ? marketService.updateRevision : 0
@@ -118,59 +160,96 @@ Panel {
           spacing: Style.space(6)
 
           // Scrollable Tabs Container
-          Flickable {
-            id: tabsFlickable
+          Item {
             width: parent.width - editBtn.width - Style.space(6)
             height: parent.height
-            contentWidth: tabsRow.implicitWidth
-            contentHeight: height
-            boundsBehavior: Flickable.StopAtBounds
-            clip: true
 
-            Row {
-              id: tabsRow
-              height: parent.height
-              spacing: Style.space(5)
+            Flickable {
+              id: tabsFlickable
+              anchors.fill: parent
+              contentWidth: tabsRow.implicitWidth
+              contentHeight: height
+              boundsBehavior: Flickable.StopAtBounds
+              clip: true
 
-              Repeater {
-                model: root.assets
+              Row {
+                id: tabsRow
+                height: parent.height
+                spacing: Style.space(5)
 
-                Item {
-                  id: tabItem
-                  width: Math.max(Style.space(54), tabText.implicitWidth + Style.space(16))
-                  height: Style.space(28)
-                  anchors.verticalCenter: parent.verticalCenter
+                Repeater {
+                  model: root.assets
 
-                  readonly property bool isCurrent: root.selectedAsset === modelData
+                  Item {
+                    id: tabItem
+                    width: Math.max(Style.space(54), tabText.implicitWidth + Style.space(16))
+                    height: Style.space(28)
+                    anchors.verticalCenter: parent.verticalCenter
 
-                  HoverHandler { id: tabHover }
+                    readonly property bool isCurrent: root.selectedAsset === modelData
 
-                  BorderSurface {
-                    anchors.fill: parent
-                    radius: Style.cornerRadius
-                    color: tabItem.isCurrent ? Style.selectionFillAlpha : (tabHover.hovered ? Style.hoverFillAlpha : Style.normalFillAlpha)
-                    borderSpec: Border.controlSpec(tabItem.isCurrent ? "selected" : (tabHover.hovered ? "hover" : "normal"), Color.foreground, Color.accent)
+                    HoverHandler { id: tabHover }
 
-                    Text {
-                      id: tabText
-                      anchors.centerIn: parent
-                      text: modelData
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.bodySmall
-                      font.bold: tabItem.isCurrent
-                      color: tabItem.isCurrent ? Color.accent : (tabHover.hovered ? Color.foreground : Util.alpha(Color.foreground, 0.85))
-                    }
-
-                    MouseArea {
+                    BorderSurface {
                       anchors.fill: parent
-                      cursorShape: Qt.PointingHandCursor
-                      onClicked: {
-                        root.selectedAsset = modelData
-                        root.watchlistManagerOpen = false
+                      radius: Style.cornerRadius
+                      color: tabItem.isCurrent ? Style.selectionFillAlpha : (tabHover.hovered ? Style.hoverFillAlpha : Style.normalFillAlpha)
+                      borderSpec: Border.controlSpec(tabItem.isCurrent ? "selected" : (tabHover.hovered ? "hover" : "normal"), Color.foreground, Color.accent)
+
+                      Text {
+                        id: tabText
+                        anchors.centerIn: parent
+                        text: modelData
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.bodySmall
+                        font.bold: tabItem.isCurrent
+                        color: tabItem.isCurrent ? Color.accent : (tabHover.hovered ? Color.foreground : Util.alpha(Color.foreground, 0.85))
+                      }
+
+                      MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                          root.selectedAsset = modelData
+                          root.watchlistManagerOpen = false
+                        }
                       }
                     }
                   }
                 }
+              }
+            }
+
+            // Left scroll affordance fade
+            Rectangle {
+              id: leftTabFade
+              anchors.left: parent.left
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+              width: Style.space(16)
+              z: 2
+              visible: tabsFlickable.contentX > 2
+              gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Color.background }
+                GradientStop { position: 1.0; color: "transparent" }
+              }
+            }
+
+            // Right scroll affordance fade
+            Rectangle {
+              id: rightTabFade
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+              width: Style.space(16)
+              z: 2
+              visible: (tabsFlickable.contentWidth > tabsFlickable.width) &&
+                       (tabsFlickable.contentX < tabsFlickable.contentWidth - tabsFlickable.width - 2)
+              gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 1.0; color: Color.background }
               }
             }
           }
@@ -410,7 +489,8 @@ Panel {
             spacing: Style.space(4)
             visible: root.searchQuery.length > 0
 
-            readonly property var results: (root.marketService && root.searchQuery) ? root.marketService.searchMarkets(root.searchQuery) : MarketModel.searchCatalog(root.searchQuery)
+            readonly property var localResults: (root.marketService && root.searchQuery) ? root.marketService.searchMarkets(root.searchQuery) : MarketModel.searchCatalog(root.searchQuery)
+            readonly property var results: localResults.concat(root.remoteSearchResults)
 
             Text {
               text: "SEARCH RESULTS"
@@ -887,7 +967,7 @@ Panel {
             SparklineChart {
               width: parent.width
               height: Style.space(110)
-              points: root.activeCandles.length > 0 ? root.activeCandles : (root.activeQuote.price > 0 ? [root.activeQuote.low24h || root.activeQuote.price * 0.98, root.activeQuote.price, root.activeQuote.high24h || root.activeQuote.price * 1.02] : [])
+              points: root.activeCandles
               isPositive: root.activeQuote.change24h >= 0
             }
           }
