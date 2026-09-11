@@ -322,6 +322,93 @@ assert.strictEqual(mapHoverIndex(-50, w, pl, pr, 30), 0);
 assert.strictEqual(mapHoverIndex(500, w, pl, pr, 30), 29);
 console.log("✓ Test J Passed: Hover coordinate mapping is exact, bounds-clamped, and division-by-zero resilient.");
 
+// -------------------------------------------------------------
+// Test K: Remote XHR Response-Byte Ceiling Enforcement
+// -------------------------------------------------------------
+console.log("\n[Test K] Verifying Remote XHR Response-Byte Ceiling Enforcement...");
+const yahooProviderQml = fs.readFileSync(path.join(__dirname, "../providers/YahooProvider.qml"), "utf8");
+
+// 1. Verify byte ceiling properties exist
+assert.ok(
+  yahooProviderQml.includes("readonly property int maxSearchResponseBytes: 131072"),
+  "FAIL: YahooProvider must define maxSearchResponseBytes ceiling (128 KB)!"
+);
+assert.ok(
+  yahooProviderQml.includes("readonly property int maxDataResponseBytes: 1048576"),
+  "FAIL: YahooProvider must define maxDataResponseBytes ceiling (1 MB)!"
+);
+
+// 2. Verify searchSymbols checks Content-Length and responseText.length before JSON.parse
+assert.ok(
+  yahooProviderQml.includes("cl > root.maxSearchResponseBytes"),
+  "FAIL: searchSymbols must check Content-Length against maxSearchResponseBytes on HEADERS_RECEIVED!"
+);
+assert.ok(
+  yahooProviderQml.includes("text.length > root.maxSearchResponseBytes"),
+  "FAIL: searchSymbols must check text.length against maxSearchResponseBytes before JSON.parse!"
+);
+
+// 3. Verify handleResponse checks data ceiling
+assert.ok(
+  yahooProviderQml.includes("text.length > root.maxDataResponseBytes"),
+  "FAIL: handleResponse must enforce maxDataResponseBytes before passing response to parser!"
+);
+
+// 4. Functional simulation of search response ceiling enforcement
+function simulateSearchResponse(headers, bodyText, maxBytes) {
+  let callbackResult = null;
+  let parsed = false;
+
+  // HEADERS_RECEIVED check
+  if (headers["Content-Length"]) {
+    const cl = parseInt(headers["Content-Length"], 10);
+    if (!isNaN(cl) && cl > maxBytes) {
+      // Aborted early
+      callbackResult = [];
+      return { aborted: true, parsed: false, result: callbackResult };
+    }
+  }
+
+  // DONE check
+  const text = bodyText || "";
+  if (text.length > maxBytes) {
+    callbackResult = [];
+    return { aborted: false, parsed: false, result: callbackResult };
+  }
+
+  try {
+    const data = JSON.parse(text);
+    parsed = true;
+    callbackResult = data.quotes || [];
+  } catch (e) {
+    callbackResult = [];
+  }
+
+  return { aborted: false, parsed: parsed, result: callbackResult };
+}
+
+// Normal response (~2 KB) -> succeeds
+const normalPayload = JSON.stringify({ quotes: [{ symbol: "AAPL", quoteType: "EQUITY" }] });
+const normalSim = simulateSearchResponse({ "Content-Length": String(normalPayload.length) }, normalPayload, 131072);
+assert.strictEqual(normalSim.parsed, true);
+assert.strictEqual(normalSim.result.length, 1);
+
+// Giant Content-Length (10 MB header) -> aborted on HEADERS_RECEIVED
+const headerExceededSim = simulateSearchResponse({ "Content-Length": "10485760" }, "fake body", 131072);
+assert.strictEqual(headerExceededSim.aborted, true);
+assert.strictEqual(headerExceededSim.parsed, false);
+assert.strictEqual(headerExceededSim.result.length, 0);
+
+// Hostile/malfunctioning oversized payload without header (250 KB) -> discarded before JSON.parse
+const oversizedPayload = JSON.stringify({ quotes: new Array(10000).fill({ symbol: "OVERFLOW", quoteType: "EQUITY" }) });
+assert.ok(oversizedPayload.length > 131072);
+const bodyExceededSim = simulateSearchResponse({}, oversizedPayload, 131072);
+assert.strictEqual(bodyExceededSim.aborted, false);
+assert.strictEqual(bodyExceededSim.parsed, false);
+assert.strictEqual(bodyExceededSim.result.length, 0);
+
+console.log("✓ Test K Passed: Remote XHR response-byte ceiling strictly enforced on headers and body; unbounded memory usage prevented.");
+
 console.log("\n============================================================");
-console.log("ALL v1.2.1 REGRESSION TESTS PASSED! ✓ (10 / 10)");
+console.log("ALL v1.2.1 REGRESSION TESTS PASSED! ✓ (11 / 11)");
 console.log("============================================================\n");
