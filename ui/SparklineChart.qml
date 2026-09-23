@@ -16,13 +16,17 @@ Item {
     var arr = []
     if (!points || points.length === 0) return [0, 0]
     for (var i = 0; i < points.length; i++) {
-      var val = points[i]
-      if (typeof val === "number") {
-        arr.push(val)
-      } else if (val && typeof val.close === "number") {
-        arr.push(val.close)
-      } else if (val && typeof val.price === "number") {
-        arr.push(val.price)
+      var raw = points[i]
+      var num = NaN
+      if (typeof raw === "number") {
+        num = raw
+      } else if (raw && typeof raw.close === "number") {
+        num = raw.close
+      } else if (raw && typeof raw.price === "number") {
+        num = raw.price
+      }
+      if (typeof num === "number" && Number.isFinite(num) && !isNaN(num)) {
+        arr.push(num)
       }
     }
     return arr.length >= 2 ? arr : (arr.length === 1 ? [arr[0], arr[0]] : [0, 0])
@@ -31,7 +35,8 @@ Item {
   readonly property real minVal: {
     var min = Infinity
     for (var i = 0; i < numericPoints.length; i++) {
-      if (numericPoints[i] < min) min = numericPoints[i]
+      var v = numericPoints[i]
+      if (typeof v === "number" && Number.isFinite(v) && v < min) min = v
     }
     return min === Infinity ? 0 : min
   }
@@ -39,7 +44,8 @@ Item {
   readonly property real maxVal: {
     var max = -Infinity
     for (var i = 0; i < numericPoints.length; i++) {
-      if (numericPoints[i] > max) max = numericPoints[i]
+      var v = numericPoints[i]
+      if (typeof v === "number" && Number.isFinite(v) && v > max) max = v
     }
     return max === -Infinity ? 0 : max
   }
@@ -251,11 +257,13 @@ Item {
     var min = root.minVal
     var max = root.maxVal
     var range = max - min
-    if (range <= 0) range = max * 0.01 || 1
+    if (range <= 0 || !Number.isFinite(range)) range = (Number.isFinite(max) && max > 0) ? (max * 0.01) : 1
     var padTop = Style.space(8)
     var padBottom = Style.space(22)
     var drawH = height - padTop - padBottom
-    var normY = (root.numericPoints[idx] - min) / range
+    var ptVal = (root.numericPoints && root.numericPoints.length > idx) ? root.numericPoints[idx] : 0
+    var normY = (Number.isFinite(ptVal) && Number.isFinite(min)) ? (ptVal - min) / range : 0.5
+    if (!Number.isFinite(normY)) normY = 0.5
     root.hoverY = padTop + (1.0 - normY) * drawH
 
     root.hovered = true

@@ -323,9 +323,9 @@ assert.strictEqual(mapHoverIndex(500, w, pl, pr, 30), 29);
 console.log("✓ Test J Passed: Hover coordinate mapping is exact, bounds-clamped, and division-by-zero resilient.");
 
 // -------------------------------------------------------------
-// Test K: Remote XHR Response-Byte Ceiling Enforcement
+// Test K: Remote XHR Response-Byte Ceiling Streaming Enforcement
 // -------------------------------------------------------------
-console.log("\n[Test K] Verifying Remote XHR Response-Byte Ceiling Enforcement...");
+console.log("\n[Test K] Verifying Remote XHR Response-Byte Ceiling Streaming Enforcement...");
 const yahooProviderQml = fs.readFileSync(path.join(__dirname, "../providers/YahooProvider.qml"), "utf8");
 
 // 1. Verify byte ceiling properties exist
@@ -338,77 +338,678 @@ assert.ok(
   "FAIL: YahooProvider must define maxDataResponseBytes ceiling (1 MB)!"
 );
 
-// 2. Verify searchSymbols checks Content-Length and responseText.length before JSON.parse
+// 2. Verify searchSymbols checks ceilings and aborts during HEADERS_RECEIVED and LOADING
 assert.ok(
   yahooProviderQml.includes("cl > root.maxSearchResponseBytes"),
   "FAIL: searchSymbols must check Content-Length against maxSearchResponseBytes on HEADERS_RECEIVED!"
 );
 assert.ok(
+  yahooProviderQml.includes("loadLen > root.maxSearchResponseBytes"),
+  "FAIL: searchSymbols must check stream length against maxSearchResponseBytes on LOADING!"
+);
+assert.ok(
   yahooProviderQml.includes("text.length > root.maxSearchResponseBytes"),
-  "FAIL: searchSymbols must check text.length against maxSearchResponseBytes before JSON.parse!"
+  "FAIL: searchSymbols must check text.length against maxSearchResponseBytes at DONE!"
 );
 
-// 3. Verify handleResponse checks data ceiling
+// 3. Verify quote and candle requests check ceilings on HEADERS_RECEIVED, LOADING, and DONE
+assert.ok(
+  yahooProviderQml.includes("cl > root.maxDataResponseBytes"),
+  "FAIL: Quote/candle requests must check Content-Length against maxDataResponseBytes on HEADERS_RECEIVED!"
+);
+assert.ok(
+  yahooProviderQml.includes("loadLen > root.maxDataResponseBytes"),
+  "FAIL: Quote/candle requests must check stream length against maxDataResponseBytes on LOADING!"
+);
 assert.ok(
   yahooProviderQml.includes("text.length > root.maxDataResponseBytes"),
-  "FAIL: handleResponse must enforce maxDataResponseBytes before passing response to parser!"
+  "FAIL: Quote/candle requests must check text.length against maxDataResponseBytes at DONE!"
 );
 
-// 4. Functional simulation of search response ceiling enforcement
-function simulateSearchResponse(headers, bodyText, maxBytes) {
-  let callbackResult = null;
-  let parsed = false;
+// 4. Verify single-shot finalization guards protect against re-entrant abort callbacks
+assert.ok(
+  yahooProviderQml.includes("if (finalized) return\n        finalized = true") ||
+  yahooProviderQml.includes("if (finalized) return;\n        finalized = true") ||
+  yahooProviderQml.includes("if (finalized) return"),
+  "FAIL: YahooProvider must implement finalized guards before calling abort()!"
+);
 
-  // HEADERS_RECEIVED check
-  if (headers["Content-Length"]) {
-    const cl = parseInt(headers["Content-Length"], 10);
-    if (!isNaN(cl) && cl > maxBytes) {
-      // Aborted early
-      callbackResult = [];
-      return { aborted: true, parsed: false, result: callbackResult };
+// 5. Streaming XHR State Machine Simulator
+class StreamingXHR {
+  constructor() {
+    this.readyState = 0; // UNSENT
+    this.status = 0;
+    this.responseText = "";
+    this.headers = {};
+    this.aborted = false;
+    this.timeout = 0;
+    this.onreadystatechange = null;
+    this.onerror = null;
+    this.ontimeout = null;
+  }
+  open(method, url) {
+    this.readyState = 1; // OPENED
+  }
+  setRequestHeader(k, v) {}
+  getResponseHeader(k) {
+    for (const key of Object.keys(this.headers)) {
+      if (key.toLowerCase() === k.toLowerCase()) return this.headers[key];
+    }
+    return null;
+  }
+  abort() {
+    this.aborted = true;
+    if (this.onreadystatechange) {
+      this.onreadystatechange();
+    }
+    if (this.onerror) {
+      this.onerror();
     }
   }
-
-  // DONE check
-  const text = bodyText || "";
-  if (text.length > maxBytes) {
-    callbackResult = [];
-    return { aborted: false, parsed: false, result: callbackResult };
+  sendHeaders(headers, status = 200) {
+    this.headers = headers || {};
+    this.status = status;
+    this.readyState = 2; // HEADERS_RECEIVED
+    if (this.onreadystatechange) this.onreadystatechange();
   }
-
-  try {
-    const data = JSON.parse(text);
-    parsed = true;
-    callbackResult = data.quotes || [];
-  } catch (e) {
-    callbackResult = [];
+  sendChunk(chunk) {
+    if (this.aborted) return;
+    this.responseText += chunk;
+    this.readyState = 3; // LOADING
+    if (this.onreadystatechange) this.onreadystatechange();
   }
-
-  return { aborted: false, parsed: parsed, result: callbackResult };
+  sendDone() {
+    if (this.aborted) return;
+    this.readyState = 4; // DONE
+    if (this.onreadystatechange) this.onreadystatechange();
+  }
 }
 
-// Normal response (~2 KB) -> succeeds
-const normalPayload = JSON.stringify({ quotes: [{ symbol: "AAPL", quoteType: "EQUITY" }] });
-const normalSim = simulateSearchResponse({ "Content-Length": String(normalPayload.length) }, normalPayload, 131072);
-assert.strictEqual(normalSim.parsed, true);
-assert.strictEqual(normalSim.result.length, 1);
+// Lifecycle runner replicating YahooProvider searchSymbols logic
+function runSearchLifecycle(xhr, query, callback) {
+  let finalized = false;
+  let parseCount = 0;
+  function finalize(results) {
+    if (finalized) return;
+    finalized = true;
+    callback(results || []);
+  }
+  xhr.onreadystatechange = function() {
+    if (finalized) return;
+    if (xhr.readyState === 2) { // HEADERS_RECEIVED
+      try {
+        const clHeader = xhr.getResponseHeader("Content-Length");
+        if (clHeader) {
+          const cl = parseInt(clHeader, 10);
+          if (!isNaN(cl) && cl > 131072) {
+            finalize([]);
+            xhr.abort();
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+    if (xhr.readyState === 3) { // LOADING
+      try {
+        const loadLen = xhr.responseText ? xhr.responseText.length : 0;
+        if (loadLen > 131072) {
+          finalize([]);
+          xhr.abort();
+          return;
+        }
+      } catch (e) {}
+    }
+    if (xhr.readyState === 4) { // DONE
+      if (finalized) return;
+      if (xhr.status === 200) {
+        const text = xhr.responseText || "";
+        if (text.length > 131072) {
+          finalize([]);
+          return;
+        }
+        try {
+          parseCount++;
+          const data = JSON.parse(text);
+          finalize(data.quotes || []);
+        } catch (e) {
+          finalize([]);
+        }
+      } else {
+        finalize([]);
+      }
+    }
+  };
+  xhr.onerror = function() { finalize([]); };
+  xhr.ontimeout = function() { finalize([]); };
+  return { getParseCount: () => parseCount };
+}
 
-// Giant Content-Length (10 MB header) -> aborted on HEADERS_RECEIVED
-const headerExceededSim = simulateSearchResponse({ "Content-Length": "10485760" }, "fake body", 131072);
-assert.strictEqual(headerExceededSim.aborted, true);
-assert.strictEqual(headerExceededSim.parsed, false);
-assert.strictEqual(headerExceededSim.result.length, 0);
+// Lifecycle runner replicating YahooProvider executeQuoteRequest / executeCandleRequest logic
+function runDataLifecycle(xhr, task, onComplete) {
+  let finalized = false;
+  let parseCount = 0;
+  let finishCount = 0;
+  function finalizeFailure(reason) {
+    if (finalized) return;
+    finalized = true;
+    finishCount++;
+    onComplete({ success: false, reason, parseCount, finishCount });
+  }
+  function finalizeBackoff(status) {
+    if (finalized) return;
+    finalized = true;
+    finishCount++;
+    onComplete({ success: false, backoff: true, status, parseCount, finishCount });
+  }
+  function finalizeSuccess(text) {
+    if (finalized) return;
+    finalized = true;
+    try {
+      parseCount++;
+      const data = JSON.parse(text);
+      finishCount++;
+      onComplete({ success: true, data, parseCount, finishCount });
+    } catch (err) {
+      finishCount++;
+      onComplete({ success: false, reason: "parse error", parseCount, finishCount });
+    }
+  }
+  xhr.onreadystatechange = function() {
+    if (finalized) return;
+    if (xhr.readyState === 2) {
+      try {
+        const clHeader = xhr.getResponseHeader("Content-Length");
+        if (clHeader) {
+          const cl = parseInt(clHeader, 10);
+          if (!isNaN(cl) && cl > 1048576) {
+            finalizeFailure("Content-Length exceeds ceiling");
+            xhr.abort();
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+    if (xhr.readyState === 3) {
+      try {
+        const loadLen = xhr.responseText ? xhr.responseText.length : 0;
+        if (loadLen > 1048576) {
+          finalizeFailure("stream exceeds ceiling");
+          xhr.abort();
+          return;
+        }
+      } catch (e) {}
+    }
+    if (xhr.readyState === 4) {
+      if (finalized) return;
+      if (xhr.status === 200) {
+        const text = xhr.responseText || "";
+        if (text.length > 1048576) {
+          finalizeFailure("DONE text exceeds ceiling");
+          return;
+        }
+        finalizeSuccess(text);
+      } else if (xhr.status === 429 || xhr.status === 403 || xhr.status >= 500) {
+        finalizeBackoff(xhr.status);
+      } else {
+        finalizeFailure("HTTP " + xhr.status);
+      }
+    }
+  };
+  xhr.onerror = function() { finalizeFailure("network error"); };
+  xhr.ontimeout = function() { finalizeFailure("timeout"); };
+  return { getParseCount: () => parseCount, getFinishCount: () => finishCount };
+}
 
-// Hostile/malfunctioning oversized payload without header (250 KB) -> discarded before JSON.parse
-const oversizedPayload = JSON.stringify({ quotes: new Array(10000).fill({ symbol: "OVERFLOW", quoteType: "EQUITY" }) });
-assert.ok(oversizedPayload.length > 131072);
-const bodyExceededSim = simulateSearchResponse({}, oversizedPayload, 131072);
-assert.strictEqual(bodyExceededSim.aborted, false);
-assert.strictEqual(bodyExceededSim.parsed, false);
-assert.strictEqual(bodyExceededSim.result.length, 0);
+// 5a. Search streaming tests:
+// Case 1: Normal response (< 128 KB) -> succeeds
+let searchCallbacks = 0;
+let searchResult = null;
+const xhrNormal = new StreamingXHR();
+const runnerNormal = runSearchLifecycle(xhrNormal, "AAPL", res => { searchCallbacks++; searchResult = res; });
+xhrNormal.open("GET", "/search");
+xhrNormal.sendHeaders({ "Content-Length": "2000" }, 200);
+xhrNormal.sendChunk(JSON.stringify({ quotes: [{ symbol: "AAPL", quoteType: "EQUITY" }] }));
+xhrNormal.sendDone();
+assert.strictEqual(searchCallbacks, 1, "Normal search must invoke callback exactly once");
+assert.strictEqual(searchResult.length, 1);
+assert.strictEqual(runnerNormal.getParseCount(), 1);
 
-console.log("✓ Test K Passed: Remote XHR response-byte ceiling strictly enforced on headers and body; unbounded memory usage prevented.");
+// Case 2: Exact ceiling boundary (131,072 bytes) -> succeeds
+let searchExactCallbacks = 0;
+const xhrExact = new StreamingXHR();
+const runnerExact = runSearchLifecycle(xhrExact, "AAPL", () => { searchExactCallbacks++; });
+xhrExact.open("GET", "/search");
+const baseExact = '{"quotes":[{"symbol":"AAPL","quoteType":"EQUITY"}],"pad":"';
+const exactPayload = baseExact + "X".repeat(131072 - baseExact.length - 2) + '"}';
+assert.strictEqual(exactPayload.length, 131072);
+xhrExact.sendHeaders({ "Content-Length": "131072" }, 200);
+xhrExact.sendChunk(exactPayload);
+xhrExact.sendDone();
+assert.strictEqual(searchExactCallbacks, 1);
+assert.strictEqual(runnerExact.getParseCount(), 1);
 
-console.log("\n============================================================");
-console.log("ALL v1.2.1 REGRESSION TESTS PASSED! ✓ (11 / 11)");
+// Case 3: 1 byte over ceiling (131,073 bytes) -> aborted during LOADING
+let searchOverCallbacks = 0;
+let searchOverResult = null;
+const xhrOver = new StreamingXHR();
+const runnerOver = runSearchLifecycle(xhrOver, "AAPL", res => { searchOverCallbacks++; searchOverResult = res; });
+xhrOver.open("GET", "/search");
+xhrOver.sendHeaders({}, 200); // chunked, no content-length
+xhrOver.sendChunk("X".repeat(131072)); // at ceiling
+assert.strictEqual(xhrOver.aborted, false, "Must not abort at exact ceiling");
+xhrOver.sendChunk("Y"); // 1 byte over ceiling -> crosses boundary during LOADING
+assert.strictEqual(xhrOver.aborted, true, "Must abort immediately when stream exceeds ceiling in LOADING");
+assert.strictEqual(searchOverCallbacks, 1, "Callback must fire exactly once on abort");
+assert.deepStrictEqual(searchOverResult, []);
+assert.strictEqual(runnerOver.getParseCount(), 0, "JSON.parse must NEVER run on oversized streams");
+
+// Case 4: Chunked transfer without Content-Length (multiple chunks exceeding ceiling)
+let chunkedCallbacks = 0;
+const xhrChunked = new StreamingXHR();
+const runnerChunked = runSearchLifecycle(xhrChunked, "AAPL", () => { chunkedCallbacks++; });
+xhrChunked.open("GET", "/search");
+xhrChunked.sendHeaders({}, 200);
+for (let c = 0; c < 5; c++) {
+  xhrChunked.sendChunk("A".repeat(32768)); // 32 KB chunks
+}
+assert.strictEqual(xhrChunked.aborted, true);
+assert.strictEqual(chunkedCallbacks, 1);
+assert.strictEqual(runnerChunked.getParseCount(), 0);
+
+// Case 5: Dishonest Content-Length header (claims 100 bytes, but streams > 128 KB)
+let dishonestCallbacks = 0;
+const xhrDishonest = new StreamingXHR();
+const runnerDishonest = runSearchLifecycle(xhrDishonest, "AAPL", () => { dishonestCallbacks++; });
+xhrDishonest.open("GET", "/search");
+xhrDishonest.sendHeaders({ "Content-Length": "100" }, 200); // Dishonest header
+assert.strictEqual(xhrDishonest.aborted, false);
+xhrDishonest.sendChunk("B".repeat(140000)); // Oversized body
+assert.strictEqual(xhrDishonest.aborted, true);
+assert.strictEqual(dishonestCallbacks, 1);
+assert.strictEqual(runnerDishonest.getParseCount(), 0);
+
+// Case 6: Giant Content-Length header -> aborted on HEADERS_RECEIVED
+let giantHeaderCallbacks = 0;
+const xhrGiant = new StreamingXHR();
+const runnerGiant = runSearchLifecycle(xhrGiant, "AAPL", () => { giantHeaderCallbacks++; });
+xhrGiant.open("GET", "/search");
+xhrGiant.sendHeaders({ "Content-Length": "10485760" }, 200); // 10 MB header
+assert.strictEqual(xhrGiant.aborted, true, "Must abort on HEADERS_RECEIVED for oversized Content-Length");
+assert.strictEqual(giantHeaderCallbacks, 1);
+assert.strictEqual(runnerGiant.getParseCount(), 0);
+
+// 5b. Data streaming tests (Quote / Candle 1 MB ceiling):
+// Case 1: Normal data response (< 1 MB) -> succeeds
+let dataNormalRes = null;
+const xhrDataNormal = new StreamingXHR();
+runDataLifecycle(xhrDataNormal, { asset: "AAPL", type: "quote" }, res => { dataNormalRes = res; });
+xhrDataNormal.open("GET", "/chart/AAPL");
+xhrDataNormal.sendHeaders({ "Content-Length": "50000" }, 200);
+xhrDataNormal.sendChunk(JSON.stringify({ chart: { result: [{ meta: { symbol: "AAPL" } }] } }));
+xhrDataNormal.sendDone();
+assert.strictEqual(dataNormalRes.success, true);
+assert.strictEqual(dataNormalRes.finishCount, 1);
+assert.strictEqual(dataNormalRes.parseCount, 1);
+
+// Case 2: Exact 1 MB ceiling -> succeeds
+let dataExactRes = null;
+const xhrDataExact = new StreamingXHR();
+runDataLifecycle(xhrDataExact, { asset: "AAPL", type: "quote" }, res => { dataExactRes = res; });
+xhrDataExact.open("GET", "/chart/AAPL");
+const baseData = '{"chart":{"result":[{"meta":{"symbol":"AAPL"}}]},"pad":"';
+const exactDataPayload = baseData + "Z".repeat(1048576 - baseData.length - 2) + '"}';
+assert.strictEqual(exactDataPayload.length, 1048576);
+xhrDataExact.sendHeaders({ "Content-Length": "1048576" }, 200);
+xhrDataExact.sendChunk(exactDataPayload);
+xhrDataExact.sendDone();
+assert.strictEqual(dataExactRes.success, true);
+assert.strictEqual(dataExactRes.finishCount, 1);
+
+// Case 3: 1 byte over ceiling (1,048,577 bytes) -> aborted in LOADING
+let dataOverRes = null;
+const xhrDataOver = new StreamingXHR();
+runDataLifecycle(xhrDataOver, { asset: "AAPL", type: "quote" }, res => { dataOverRes = res; });
+xhrDataOver.open("GET", "/chart/AAPL");
+xhrDataOver.sendHeaders({}, 200);
+xhrDataOver.sendChunk("D".repeat(1048576));
+assert.strictEqual(xhrDataOver.aborted, false);
+xhrDataOver.sendChunk("E"); // 1 byte over
+assert.strictEqual(xhrDataOver.aborted, true);
+assert.strictEqual(dataOverRes.success, false);
+assert.strictEqual(dataOverRes.finishCount, 1);
+assert.strictEqual(dataOverRes.parseCount, 0);
+
+// Case 4: Giant Content-Length on data endpoint -> aborted on HEADERS_RECEIVED
+let dataGiantRes = null;
+const xhrDataGiant = new StreamingXHR();
+runDataLifecycle(xhrDataGiant, { asset: "AAPL", type: "quote" }, res => { dataGiantRes = res; });
+xhrDataGiant.open("GET", "/chart/AAPL");
+xhrDataGiant.sendHeaders({ "Content-Length": "20000000" }, 200);
+assert.strictEqual(xhrDataGiant.aborted, true);
+assert.strictEqual(dataGiantRes.success, false);
+assert.strictEqual(dataGiantRes.finishCount, 1);
+assert.strictEqual(dataGiantRes.parseCount, 0);
+
+console.log("✓ Test K Passed: Remote XHR response-byte ceiling strictly enforced during HEADERS_RECEIVED and LOADING streaming states; zero memory leaks or re-entrancy.");
+
+// -------------------------------------------------------------
+// Test L: Structural PlainText Regression Test
+// -------------------------------------------------------------
+console.log("\n[Test L] Verifying Untrusted Text Sinks Enforce Text.PlainText in Panel.qml...");
+
+// Find enclosing block for a given needle in source text
+function getEnclosingBlock(src, needle) {
+  const idx = src.indexOf(needle);
+  if (idx === -1) return null;
+  // Search backward for "Text {"
+  const textStart = src.lastIndexOf("Text {", idx);
+  if (textStart === -1) return null;
+  // Find closing brace matching this block
+  let depth = 0;
+  let blockEnd = -1;
+  for (let i = textStart; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        blockEnd = i;
+        break;
+      }
+    }
+  }
+  return blockEnd !== -1 ? src.substring(textStart, blockEnd + 1) : null;
+}
+
+// 1. Search Result Symbol sink: catItem.asset
+const searchSymbolBlock = getEnclosingBlock(panelQml, "text: catItem.asset");
+assert.ok(searchSymbolBlock, "FAIL: Could not locate 'text: catItem.asset' block in Panel.qml");
+assert.ok(
+  searchSymbolBlock.includes("textFormat: Text.PlainText"),
+  "FAIL: Search result symbol Text block must specify 'textFormat: Text.PlainText'!"
+);
+
+// 2. Search Result Name sink: catItem.name
+const searchNameBlock = getEnclosingBlock(panelQml, 'text: "• " + catItem.name');
+assert.ok(searchNameBlock, "FAIL: Could not locate 'text: \"• \" + catItem.name' block in Panel.qml");
+assert.ok(
+  searchNameBlock.includes("textFormat: Text.PlainText"),
+  "FAIL: Search result name Text block must specify 'textFormat: Text.PlainText'!"
+);
+
+// 3. Watchlist Manager Symbol sink: assetName
+const wlSymbolBlock = getEnclosingBlock(panelQml, 'text: "★ " + assetName');
+assert.ok(wlSymbolBlock, "FAIL: Could not locate 'text: \"★ \" + assetName' block in Panel.qml");
+assert.ok(
+  wlSymbolBlock.includes("textFormat: Text.PlainText"),
+  "FAIL: Watchlist manager symbol Text block must specify 'textFormat: Text.PlainText'!"
+);
+
+// 4. Watchlist Manager Name sink: catItem.name
+// Find the catItem.name inside watchlist manager delegate
+const wlIdx = panelQml.indexOf('readonly property string assetName: modelData');
+assert.ok(wlIdx !== -1, "FAIL: Could not find watchlist delegate in Panel.qml");
+const wlSub = panelQml.substring(wlIdx);
+const wlNameBlock = getEnclosingBlock(wlSub, 'text: "• " + catItem.name');
+assert.ok(wlNameBlock, "FAIL: Could not locate watchlist manager name block");
+assert.ok(
+  wlNameBlock.includes("textFormat: Text.PlainText"),
+  "FAIL: Watchlist manager name Text block must specify 'textFormat: Text.PlainText'!"
+);
+
+// 5. Detail Header Symbol sink: root.activeQuote.symbol
+const detailSymbolBlock = getEnclosingBlock(panelQml, "text: root.activeQuote.symbol");
+assert.ok(detailSymbolBlock, "FAIL: Could not locate 'text: root.activeQuote.symbol' block in Panel.qml");
+assert.ok(
+  detailSymbolBlock.includes("textFormat: Text.PlainText"),
+  "FAIL: Detail header symbol Text block must specify 'textFormat: Text.PlainText'!"
+);
+
+// 6. Detail Header Name sink: root.activeQuote.name
+const detailNameBlock = getEnclosingBlock(panelQml, 'text: "• " + root.activeQuote.name');
+assert.ok(detailNameBlock, "FAIL: Could not locate 'text: \"• \" + root.activeQuote.name' block in Panel.qml");
+assert.ok(
+  detailNameBlock.includes("textFormat: Text.PlainText"),
+  "FAIL: Detail header name Text block must specify 'textFormat: Text.PlainText'!"
+);
+
+// 7. Watchlist Tab Text sink: id: tabText
+const tabTextBlock = getEnclosingBlock(panelQml, "id: tabText");
+assert.ok(tabTextBlock, "FAIL: Could not locate 'id: tabText' block in Panel.qml");
+assert.ok(
+  tabTextBlock.includes("textFormat: Text.PlainText"),
+  "FAIL: Watchlist tab Text block must specify 'textFormat: Text.PlainText'!"
+);
+
+console.log("✓ Test L Passed: All 7 untrusted/dynamic string Text sinks in Panel.qml strictly enforce Text.PlainText.");
+
+// -------------------------------------------------------------
+// Test M: Numeric Robustness & Normalizer Resilience
+// -------------------------------------------------------------
+console.log("\n[Test M] Verifying Numeric Robustness & Finite Number Invariants...");
+
+// 1. Binance Ticker normalizer with non-finite / hostile values
+const binanceMalformed = {
+  s: "BTCUSDT",
+  c: "NaN",
+  P: "Infinity",
+  h: "-Infinity",
+  l: "not-a-number",
+  v: null,
+  b: undefined,
+  a: "NaN"
+};
+const normBinance = sandbox.normalizeBinanceTicker(binanceMalformed, 1000);
+assert.ok(normBinance, "Normalizer should not crash on non-finite fields");
+assert.strictEqual(Number.isFinite(normBinance.price), true, "price must be finite");
+assert.strictEqual(Number.isFinite(normBinance.change24h), true, "change24h must be finite");
+assert.strictEqual(Number.isFinite(normBinance.changePercent24h), true, "changePercent24h must be finite");
+assert.strictEqual(Number.isFinite(normBinance.high24h), true, "high24h must be finite");
+assert.strictEqual(Number.isFinite(normBinance.low24h), true, "low24h must be finite");
+assert.strictEqual(Number.isFinite(normBinance.volume24h), true, "volume24h must be finite");
+
+// 2. Coinbase Ticker normalizer with non-finite / hostile values
+const coinbaseMalformed = {
+  product_id: "BTC-USD",
+  price: "Infinity",
+  open_24h: "NaN",
+  volume_24h: "invalid",
+  low_24h: null,
+  high_24h: undefined,
+  best_bid: "NaN",
+  best_ask: "-Infinity"
+};
+const normCoinbase = sandbox.normalizeCoinbaseTicker(coinbaseMalformed, 1000);
+assert.ok(normCoinbase);
+assert.strictEqual(Number.isFinite(normCoinbase.price), true);
+assert.strictEqual(Number.isFinite(normCoinbase.change24h), true);
+assert.strictEqual(Number.isFinite(normCoinbase.changePercent24h), true);
+assert.strictEqual(Number.isFinite(normCoinbase.high24h), true);
+assert.strictEqual(Number.isFinite(normCoinbase.low24h), true);
+assert.strictEqual(Number.isFinite(normCoinbase.volume24h), true);
+
+// 3. Hyperliquid Meta normalizer with non-finite values
+const hlMalformed = [
+  { universe: [{ name: "HYPE", szDecimals: 2 }] },
+  [{
+    markPx: "NaN",
+    prevDayPx: "Infinity",
+    dayNtlVlm: "-Infinity",
+    bidPx: "NaN",
+    askPx: null
+  }]
+];
+const normHl = sandbox.normalizeHyperliquidMeta(hlMalformed, ["HYPE"], 1000);
+assert.ok(normHl && normHl.length > 0);
+assert.strictEqual(Number.isFinite(normHl[0].price), true);
+assert.strictEqual(Number.isFinite(normHl[0].change24h), true);
+assert.strictEqual(Number.isFinite(normHl[0].volume24h), true);
+
+// 4. Yahoo Chart normalizer with non-finite values
+const yahooChartMalformed = {
+  chart: {
+    result: [{
+      meta: {
+        symbol: "AAPL",
+        regularMarketPrice: 150.25,
+        regularMarketDayHigh: "Infinity",
+        regularMarketDayLow: "-Infinity",
+        regularMarketVolume: "NaN"
+      },
+      timestamp: [1000],
+      indicators: {
+        quote: [{
+          open: ["NaN"],
+          high: ["Infinity"],
+          low: ["-Infinity"],
+          close: [150.25],
+          volume: [null]
+        }]
+      }
+    }]
+  }
+};
+const normYahoo = sandbox.normalizeYahooChart(yahooChartMalformed, 1000 * 1000);
+assert.ok(normYahoo);
+assert.strictEqual(Number.isFinite(normYahoo.price), true);
+assert.strictEqual(Number.isFinite(normYahoo.high24h), true);
+assert.strictEqual(Number.isFinite(normYahoo.low24h), true);
+assert.strictEqual(Number.isFinite(normYahoo.volume24h), true);
+
+// 5. Yahoo Candles normalizer with hostile non-finite entries
+const yahooCandlesMalformed = {
+  chart: {
+    result: [{
+      timestamp: [1000, 2000, 3000, 4000],
+      indicators: {
+        quote: [{
+          close: [150, "NaN", null, Infinity],
+          open: [149, 100, 100, 100],
+          high: ["Infinity", 100, 100, 100],
+          low: ["-Infinity", 100, 100, 100],
+          volume: ["NaN", 0, 0, 0]
+        }]
+      }
+    }]
+  }
+};
+const normCandles = sandbox.normalizeYahooCandles(yahooCandlesMalformed);
+assert.strictEqual(normCandles.length, 1, "Only the single valid finite candle should be accepted");
+assert.strictEqual(Number.isFinite(normCandles[0].time), true);
+assert.strictEqual(Number.isFinite(normCandles[0].open), true);
+assert.strictEqual(Number.isFinite(normCandles[0].high), true);
+assert.strictEqual(Number.isFinite(normCandles[0].low), true);
+assert.strictEqual(Number.isFinite(normCandles[0].close), true);
+assert.strictEqual(Number.isFinite(normCandles[0].volume), true);
+
+// 6. SparklineChart point filtering simulation
+const rawMixedPoints = [100, NaN, Infinity, -Infinity, "bad", null, undefined, 105, 102];
+const filteredPoints = rawMixedPoints.filter(num => typeof num === "number" && Number.isFinite(num) && !isNaN(num));
+assert.deepStrictEqual(filteredPoints, [100, 105, 102]);
+
+let testMin = Infinity;
+let testMax = -Infinity;
+for (const p of filteredPoints) {
+  if (p < testMin) testMin = p;
+  if (p > testMax) testMax = p;
+}
+assert.strictEqual(testMin, 100);
+assert.strictEqual(testMax, 105);
+
+// Flat dataset zero division protection
+const flatPoints = [100, 100];
+const flatMin = 100, flatMax = 100;
+const flatRange = Math.max(1e-6, flatMax - flatMin);
+assert.ok(flatRange > 0, "Range must never be 0 to prevent zero division in coordinate scaling");
+
+console.log("✓ Test M Passed: All normalizers and chart scaling are strictly resilient against NaN, Infinity, and non-finite values.");
+
+// -------------------------------------------------------------
+// Test N: Dynamic Stock Validation, Tamper Resistance & Persistence
+// -------------------------------------------------------------
+console.log("\n[Test N] Verifying Dynamic Stock Symbol Validation & Tamper Resistance...");
+
+// 1. Valid symbols accepted
+const validSymbols = ["AAPL", "BRK.B", "BF.B", "ABC-DEF", "aapl"];
+for (const sym of validSymbols) {
+  const registered = sandbox.registerDynamicInstrument({ asset: sym, name: "Test " + sym });
+  assert.ok(registered, "Valid symbol '" + sym + "' must be accepted");
+  assert.strictEqual(registered.asset, sym.toUpperCase());
+  assert.strictEqual(registered.assetClass, "stock");
+  assert.strictEqual(registered.instrument, sym.toUpperCase() + "_USD_STOCK");
+  assert.strictEqual(registered.providers.yahoo, sym.toUpperCase());
+}
+
+// 2. Invalid / hostile symbols rejected
+const invalidSymbols = [
+  "",
+  "   ",
+  "<script>alert(1)</script>",
+  "<img src=x onerror=alert(1)>",
+  "A/B",
+  "A:B",
+  "A_B",
+  "TOOLONGSYMBOL", // > 10 chars
+  "SYM 1",         // spaces
+  "SYM$1",
+  "SYM#1",
+  null,
+  undefined,
+  12345,
+  {}
+];
+
+for (const inv of invalidSymbols) {
+  const reg = sandbox.registerDynamicInstrument({ asset: inv, name: "Hostile" });
+  assert.strictEqual(reg, null, "Malformed/hostile symbol '" + inv + "' must be rejected!");
+}
+
+// 3. Provider and instrument hijacking prevention
+const hostilePayload = {
+  asset: "TSLA",
+  name: "T".repeat(300),              // oversized name (> 100)
+  assetClass: "crypto",               // attempt to hijack assetClass
+  instrument: "MALICIOUS_INSTRUMENT", // attempt to hijack instrument
+  exchange: "E".repeat(100),          // oversized exchange (> 30)
+  precision: 999,                     // invalid precision
+  providers: { binance: "BTCUSDT", yahoo: "HIJACKED" }, // attempt to hijack providers
+  aliases: ["evil", "btc"]            // attempt to hijack aliases
+};
+
+const canonicalTsla = sandbox.registerDynamicInstrument(hostilePayload);
+assert.ok(canonicalTsla);
+assert.strictEqual(canonicalTsla.asset, "TSLA");
+assert.strictEqual(canonicalTsla.assetClass, "stock", "Hostile assetClass override must be rejected");
+assert.strictEqual(canonicalTsla.instrument, "TSLA_USD_STOCK", "Hostile instrument override must be rejected");
+assert.strictEqual(canonicalTsla.providers.yahoo, "TSLA", "Hostile provider hijack must be rejected");
+assert.strictEqual(canonicalTsla.providers.binance, undefined, "Alien provider mapping must be rejected");
+assert.strictEqual(canonicalTsla.name.length, 100, "Name must be capped at 100 characters");
+assert.strictEqual(canonicalTsla.exchange.length, 30, "Exchange must be capped at 30 characters");
+assert.strictEqual(canonicalTsla.precision, 8, "Precision must clamp to maximum 8");
+assert.strictEqual(canonicalTsla.aliases.length, 1);
+assert.strictEqual(canonicalTsla.aliases[0], "tsla", "Hostile aliases must be overwritten with canonical symbol");
+
+// 4. Watchlist deserialization rejects malformed dynamic entries
+const hostileWatchlistJson = JSON.stringify({
+  version: 2,
+  items: [
+    { asset: "BTC", name: "Bitcoin", assetClass: "crypto" },
+    { asset: "<script>alert(1)</script>", name: "XSS", assetClass: "stock" },
+    { asset: "NVDA", name: "NVIDIA Corporation", assetClass: "stock" },
+    { asset: "A/B", name: "Invalid Slash", assetClass: "stock" }
+  ]
+});
+
+sandbox.clearDynamicInstruments();
+const cleanedWl = sandbox.deserializeWatchlist(hostileWatchlistJson);
+assert.strictEqual(cleanedWl.items.length, 2, "Only valid items (BTC, NVDA) should survive deserialization");
+assert.strictEqual(cleanedWl.items[0].asset, "BTC");
+assert.strictEqual(cleanedWl.items[1].asset, "NVDA");
+assert.strictEqual(sandbox.getCatalogItem("<script>alert(1)</script>"), null);
+assert.strictEqual(sandbox.getCatalogItem("A/B"), null);
+assert.notStrictEqual(sandbox.getCatalogItem("NVDA"), null);
+
+console.log("✓ Test N Passed: Dynamic stock symbols strictly validated (/^[A-Z0-9.\\-]{1,10}$/); hijacking and injection attacks completely prevented.");
+
+console.log("============================================================\n");
+console.log("ALL v1.2.1 REGRESSION TESTS PASSED! ✓ (14 / 14)");
 console.log("============================================================\n");

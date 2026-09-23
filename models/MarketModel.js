@@ -620,25 +620,66 @@ for (var a in CATALOG_BY_ASSET) {
 
 var DEFAULT_ASSETS = ["BTC", "ETH", "SOL", "HYPE"];
 
+var DYNAMIC_SYMBOL_REGEX = /^[A-Z0-9.\-]{1,10}$/;
+
+function toFiniteNumber(val, fallback) {
+  var def = (typeof fallback === "number" && Number.isFinite(fallback)) ? fallback : 0;
+  if (val === null || val === undefined) return def;
+  var n = Number(val);
+  return Number.isFinite(n) ? n : def;
+}
+
+function canonicalizeDynamicStock(item) {
+  if (!item || typeof item !== "object") return null;
+  var rawAsset = (typeof item.asset === "string") ? item.asset : (typeof item.symbol === "string" ? item.symbol : "");
+  var sym = rawAsset.trim().toUpperCase();
+  if (!sym || !DYNAMIC_SYMBOL_REGEX.test(sym)) {
+    return null;
+  }
+
+  // Name: require a string when supplied, trim it, fall back to the symbol when absent, cap at 100 characters
+  var name = sym;
+  if (typeof item.name === "string" && item.name.trim()) {
+    name = item.name.trim().slice(0, 100);
+  }
+
+  // Precision: integer only, clamp to 0..8, default 2
+  var precision = 2;
+  if (typeof item.precision === "number" && Number.isFinite(item.precision)) {
+    var pInt = Math.round(item.precision);
+    precision = Math.max(0, Math.min(8, pInt));
+  }
+
+  // Exchange: string only, trim, cap at 30 chars, default "US"
+  var exchange = "US";
+  if (typeof item.exchange === "string" && item.exchange.trim()) {
+    exchange = item.exchange.trim().slice(0, 30);
+  }
+
+  // Canonicalize without allowing persisted/remote inputs to override provider symbol or instrument identity:
+  // instrument = sym + "_USD_STOCK"
+  // providers = { yahoo: sym }
+  // aliases = [sym.toLowerCase()]
+  return {
+    asset: sym,
+    name: name,
+    assetClass: "stock",
+    instrument: sym + "_USD_STOCK",
+    exchange: exchange,
+    precision: precision,
+    aliases: [sym.toLowerCase()],
+    providers: { yahoo: sym }
+  };
+}
+
 // Dynamic instrument registry for discovered stocks (separate from static catalog)
 var DYNAMIC_INSTRUMENTS = {};
 
 function registerDynamicInstrument(item) {
-  if (!item || !item.asset) return null;
-  var sym = String(item.asset).trim().toUpperCase();
-  if (!sym) return null;
-  var entry = {
-    asset: sym,
-    name: item.name || sym,
-    assetClass: item.assetClass || "stock",
-    instrument: item.instrument || (sym + "_USD_STOCK"),
-    exchange: item.exchange || "US",
-    precision: (typeof item.precision === "number") ? item.precision : 2,
-    aliases: item.aliases || [sym.toLowerCase()],
-    providers: Object.assign({ yahoo: sym }, item.providers || {})
-  };
-  DYNAMIC_INSTRUMENTS[sym] = entry;
-  return entry;
+  var validated = canonicalizeDynamicStock(item);
+  if (!validated) return null;
+  DYNAMIC_INSTRUMENTS[validated.asset] = validated;
+  return validated;
 }
 
 function clearDynamicInstruments() {
@@ -827,32 +868,29 @@ function deserializeWatchlist(rawString) {
 
     for (var k = 0; k < items.length; k++) {
       var it = items[k];
-      if (!it || !it.asset) continue;
-      var assetKey = String(it.asset).trim().toUpperCase();
+      if (!it || typeof it !== "object") continue;
+      var rawAsset = (typeof it.asset === "string") ? it.asset : (typeof it.symbol === "string" ? it.symbol : "");
+      var assetKey = rawAsset.trim().toUpperCase();
       if (!assetKey || seen[assetKey]) continue;
 
       var catalogEntry = getCatalogItem(assetKey);
-      if (!catalogEntry && it.assetClass === "stock") {
-        catalogEntry = registerDynamicInstrument({
-          asset: assetKey,
-          name: it.name || assetKey,
-          assetClass: "stock",
-          instrument: it.instrument || (assetKey + "_USD_STOCK"),
-          exchange: it.exchange || "US",
-          precision: typeof it.precision === "number" ? it.precision : 2,
-          providers: it.providers || { yahoo: assetKey }
-        });
+      if (!catalogEntry) {
+        // Unknown stock instrument: pass through canonical dynamic registration path
+        var registered = registerDynamicInstrument(it);
+        if (registered) {
+          catalogEntry = registered;
+        }
       }
-      if (!catalogEntry) continue; // Reject invalid/unsupported markets
+      if (!catalogEntry) continue; // Discard invalid dynamic entries
 
       seen[assetKey] = true;
       cleanItems.push({
         asset: catalogEntry.asset,
-        name: it.name || catalogEntry.name,
+        name: (catalogEntry.assetClass === "stock" && typeof it.name === "string" && it.name.trim()) ? it.name.trim().slice(0, 100) : catalogEntry.name,
         instrument: catalogEntry.instrument,
         precision: catalogEntry.precision,
         assetClass: catalogEntry.assetClass || "crypto",
-        providers: Object.assign({}, catalogEntry.providers, it.providers || {})
+        providers: Object.assign({}, catalogEntry.providers)
       });
 
       if (cleanItems.length >= MAX_WATCHLIST_SIZE) break;
@@ -877,10 +915,13 @@ function addWatchlistMarket(watchlistObj, assetOrItem) {
     return { success: false, reason: "MAX_LIMIT", watchlist: current };
   }
 
-  var targetAsset = (typeof assetOrItem === "object" && assetOrItem.asset) ? assetOrItem.asset : assetOrItem;
-  var catalogItem = getCatalogItem(targetAsset);
-  if (!catalogItem && typeof assetOrItem === "object" && assetOrItem.asset && assetOrItem.assetClass === "stock") {
+  var targetAsset = (typeof assetOrItem === "object" && assetOrItem && typeof assetOrItem.asset === "string") ? assetOrItem.asset : (typeof assetOrItem === "string" ? assetOrItem : "");
+  var cleanTarget = targetAsset.trim().toUpperCase();
+  var catalogItem = getCatalogItem(cleanTarget);
+  if (!catalogItem && typeof assetOrItem === "object" && assetOrItem) {
     catalogItem = registerDynamicInstrument(assetOrItem);
+  } else if (!catalogItem && typeof assetOrItem === "string" && cleanTarget) {
+    catalogItem = registerDynamicInstrument({ asset: cleanTarget });
   }
   if (!catalogItem) {
     return { success: false, reason: "INVALID_MARKET", watchlist: current };
@@ -1042,15 +1083,15 @@ function normalizeBinanceTicker(data, now) {
   var cat = getCatalogItem(asset);
   if (!cat) return null;
 
-  var price = parseFloat(data.c || 0);
-  var change24h = parseFloat(data.P || 0);
-  var high24h = parseFloat(data.h || 0);
-  var low24h = parseFloat(data.l || 0);
-  var volume24h = parseFloat(data.q || 0);
-  var bid = parseFloat(data.b || 0);
-  var ask = parseFloat(data.a || 0);
-  var eventTime = parseInt(data.E || Date.now(), 10);
+  var price = toFiniteNumber(data.c, 0);
+  var change24h = toFiniteNumber(data.P, 0);
+  var high24h = toFiniteNumber(data.h, 0);
+  var low24h = toFiniteNumber(data.l, 0);
+  var volume24h = toFiniteNumber(data.q, 0);
+  var bid = toFiniteNumber(data.b, 0);
+  var ask = toFiniteNumber(data.a, 0);
   var recTime = now || Date.now();
+  var eventTime = toFiniteNumber(data.E, recTime);
 
   return {
     asset: asset,
@@ -1061,17 +1102,17 @@ function normalizeBinanceTicker(data, now) {
     symbol: asset + "/USD",
     provider: "binance",
     exchange: "Binance",
-    price: isNaN(price) ? 0 : price,
-    change24h: isNaN(change24h) ? 0 : change24h,
-    changePercent24h: isNaN(change24h) ? 0 : change24h,
+    price: price,
+    change24h: change24h,
+    changePercent24h: change24h,
     changeAmount: 0,
     previousClose: 0,
     open: 0,
-    high24h: isNaN(high24h) ? 0 : high24h,
-    low24h: isNaN(low24h) ? 0 : low24h,
-    volume24h: isNaN(volume24h) ? 0 : volume24h,
-    bid: isNaN(bid) ? 0 : bid,
-    ask: isNaN(ask) ? 0 : ask,
+    high24h: high24h,
+    low24h: low24h,
+    volume24h: volume24h,
+    bid: bid,
+    ask: ask,
     spread: (bid > 0 && ask >= bid) ? (ask - bid) : 0,
     providerTimestamp: eventTime,
     receivedTimestamp: recTime,
@@ -1091,20 +1132,22 @@ function normalizeCoinbaseTicker(data, now) {
   var cat = getCatalogItem(asset);
   if (!cat) return null;
 
-  var price = parseFloat(data.price || 0);
-  var open24h = parseFloat(data.open_24h || 0);
+  var price = toFiniteNumber(data.price, 0);
+  var open24h = toFiniteNumber(data.open_24h, 0);
   var change24h = 0;
   if (open24h > 0 && price > 0) {
     change24h = ((price - open24h) / open24h) * 100;
   }
-  var high24h = parseFloat(data.high_24h || 0);
-  var low24h = parseFloat(data.low_24h || 0);
-  var baseVol = parseFloat(data.volume_24h || 0);
-  var volume24h = baseVol * (price > 0 ? price : 1);
-  var bid = parseFloat(data.best_bid || 0);
-  var ask = parseFloat(data.best_ask || 0);
-  var eventTime = data.time ? Date.parse(data.time) : Date.now();
+  change24h = toFiniteNumber(change24h, 0);
+  var high24h = toFiniteNumber(data.high_24h, 0);
+  var low24h = toFiniteNumber(data.low_24h, 0);
+  var baseVol = toFiniteNumber(data.volume_24h, 0);
+  var volume24h = toFiniteNumber(baseVol * (price > 0 ? price : 1), 0);
+  var bid = toFiniteNumber(data.best_bid, 0);
+  var ask = toFiniteNumber(data.best_ask, 0);
   var recTime = now || Date.now();
+  var eventTime = data.time ? Date.parse(data.time) : recTime;
+  eventTime = toFiniteNumber(eventTime, recTime);
 
   return {
     asset: asset,
@@ -1115,19 +1158,19 @@ function normalizeCoinbaseTicker(data, now) {
     symbol: asset + "/USD",
     provider: "coinbase",
     exchange: "Coinbase",
-    price: isNaN(price) ? 0 : price,
-    change24h: isNaN(change24h) ? 0 : change24h,
-    changePercent24h: isNaN(change24h) ? 0 : change24h,
+    price: price,
+    change24h: change24h,
+    changePercent24h: change24h,
     changeAmount: 0,
     previousClose: open24h,
     open: open24h,
-    high24h: isNaN(high24h) ? 0 : high24h,
-    low24h: isNaN(low24h) ? 0 : low24h,
-    volume24h: isNaN(volume24h) ? 0 : volume24h,
-    bid: isNaN(bid) ? 0 : bid,
-    ask: isNaN(ask) ? 0 : ask,
+    high24h: high24h,
+    low24h: low24h,
+    volume24h: volume24h,
+    bid: bid,
+    ask: ask,
     spread: (bid > 0 && ask >= bid) ? (ask - bid) : 0,
-    providerTimestamp: isNaN(eventTime) ? recTime : eventTime,
+    providerTimestamp: eventTime,
     receivedTimestamp: recTime,
     freshness: "LIVE",
     assetClass: "crypto",
@@ -1156,15 +1199,18 @@ function normalizeHyperliquidMeta(data, targetAssets, now) {
     if (!ctx) continue;
 
     var cat = getCatalogItem(name);
-    var price = parseFloat(ctx.markPx || ctx.midPx || 0);
-    var prevDay = parseFloat(ctx.prevDayPx || 0);
+    var price = toFiniteNumber(ctx.markPx || ctx.midPx, 0);
+    var prevDay = toFiniteNumber(ctx.prevDayPx, 0);
     var change24h = 0;
     if (prevDay > 0 && price > 0) {
       change24h = ((price - prevDay) / prevDay) * 100;
     }
-    var volume24h = parseFloat(ctx.dayNtlVlm || 0);
-    var bid = ctx.impactPxs && ctx.impactPxs[0] ? parseFloat(ctx.impactPxs[0]) : price;
-    var ask = ctx.impactPxs && ctx.impactPxs[1] ? parseFloat(ctx.impactPxs[1]) : price;
+    change24h = toFiniteNumber(change24h, 0);
+    var volume24h = toFiniteNumber(ctx.dayNtlVlm, 0);
+    var rawBid = ctx.impactPxs && ctx.impactPxs[0] ? ctx.impactPxs[0] : price;
+    var rawAsk = ctx.impactPxs && ctx.impactPxs[1] ? ctx.impactPxs[1] : price;
+    var bid = toFiniteNumber(rawBid, price);
+    var ask = toFiniteNumber(rawAsk, price);
 
     results.push({
       asset: name,
@@ -1226,20 +1272,21 @@ function normalizeYahooChart(data, now) {
   var lastTimestampSec = 0;
   for (var i = closes.length - 1; i >= 0; i--) {
     var cVal = closes[i];
-    if (cVal !== null && cVal !== undefined && !isNaN(cVal) && Number(cVal) > 0) {
-      price = Number(cVal);
+    var cNum = toFiniteNumber(cVal, 0);
+    if (cNum > 0) {
+      price = cNum;
       if (timestamps[i]) {
-        lastTimestampSec = Number(timestamps[i]);
+        lastTimestampSec = toFiniteNumber(timestamps[i], 0);
       }
       break;
     }
   }
 
   // Fallback to meta.regularMarketPrice if chart close array didn't yield a valid value
-  if (price <= 0 && meta.regularMarketPrice && !isNaN(meta.regularMarketPrice)) {
-    price = Number(meta.regularMarketPrice);
+  if (price <= 0 && meta.regularMarketPrice) {
+    price = toFiniteNumber(meta.regularMarketPrice, 0);
   }
-  if (price <= 0) return null;
+  if (price <= 0 || !Number.isFinite(price)) return null;
 
   // Determine market state from meta.currentTradingPeriod
   // currentTradingPeriod has { pre: { start, end }, regular: { start, end }, post: { start, end } } (in unix epoch seconds)
@@ -1251,13 +1298,13 @@ function normalizeYahooChart(data, now) {
 
   if (ctp) {
     if (ctp.regular && ctp.regular.start && ctp.regular.end) {
-      regStart = Number(ctp.regular.start);
-      regEnd = Number(ctp.regular.end);
+      regStart = toFiniteNumber(ctp.regular.start, 0);
+      regEnd = toFiniteNumber(ctp.regular.end, 0);
     }
-    var preStart = ctp.pre ? Number(ctp.pre.start) : 0;
-    var preEnd = ctp.pre ? Number(ctp.pre.end) : 0;
-    var postStart = ctp.post ? Number(ctp.post.start) : 0;
-    var postEnd = ctp.post ? Number(ctp.post.end) : 0;
+    var preStart = ctp.pre ? toFiniteNumber(ctp.pre.start, 0) : 0;
+    var preEnd = ctp.pre ? toFiniteNumber(ctp.pre.end, 0) : 0;
+    var postStart = ctp.post ? toFiniteNumber(ctp.post.start, 0) : 0;
+    var postEnd = ctp.post ? toFiniteNumber(ctp.post.end, 0) : 0;
 
     if (regStart > 0 && nowSec >= regStart && nowSec < regEnd) {
       marketState = "regular";
@@ -1274,18 +1321,20 @@ function normalizeYahooChart(data, now) {
   var openPrice = 0;
   if (regStart > 0 && timestamps.length > 0) {
     for (var j = 0; j < timestamps.length; j++) {
-      if (Number(timestamps[j]) >= regStart) {
-        if (opens[j] !== null && opens[j] !== undefined && !isNaN(opens[j]) && Number(opens[j]) > 0) {
-          openPrice = Number(opens[j]);
-        } else if (closes[j] !== null && closes[j] !== undefined && !isNaN(closes[j]) && Number(closes[j]) > 0) {
-          openPrice = Number(closes[j]);
+      if (toFiniteNumber(timestamps[j], 0) >= regStart) {
+        var op = toFiniteNumber(opens[j], 0);
+        var cl = toFiniteNumber(closes[j], 0);
+        if (op > 0) {
+          openPrice = op;
+        } else if (cl > 0) {
+          openPrice = cl;
         }
         break;
       }
     }
   }
   if (openPrice <= 0 && meta.regularMarketPrice) {
-    openPrice = Number(meta.regularMarketPrice);
+    openPrice = toFiniteNumber(meta.regularMarketPrice, 0);
   }
 
   // Determine reference close price for change calculation:
@@ -1296,25 +1345,26 @@ function normalizeYahooChart(data, now) {
   if (marketState === "postMarket") {
     if (regEnd > 0 && timestamps.length > 0) {
       for (var k = timestamps.length - 1; k >= 0; k--) {
-        if (Number(timestamps[k]) <= regEnd) {
-          if (closes[k] !== null && closes[k] !== undefined && !isNaN(closes[k]) && Number(closes[k]) > 0) {
-            prevClose = Number(closes[k]);
+        if (toFiniteNumber(timestamps[k], 0) <= regEnd) {
+          var pcc = toFiniteNumber(closes[k], 0);
+          if (pcc > 0) {
+            prevClose = pcc;
             break;
           }
         }
       }
     }
-    if (prevClose <= 0 && meta.regularMarketPrice && !isNaN(meta.regularMarketPrice)) {
-      prevClose = Number(meta.regularMarketPrice);
+    if (prevClose <= 0 && meta.regularMarketPrice) {
+      prevClose = toFiniteNumber(meta.regularMarketPrice, 0);
     }
   }
 
   // Fallback to previous day's close for regular / pre-market / closed, or if post-market didn't locate a today close
   if (prevClose <= 0) {
-    if (meta.previousClose !== null && meta.previousClose !== undefined && !isNaN(meta.previousClose) && Number(meta.previousClose) > 0) {
-      prevClose = Number(meta.previousClose);
-    } else if (meta.chartPreviousClose !== null && meta.chartPreviousClose !== undefined && !isNaN(meta.chartPreviousClose) && Number(meta.chartPreviousClose) > 0) {
-      prevClose = Number(meta.chartPreviousClose);
+    if (meta.previousClose) {
+      prevClose = toFiniteNumber(meta.previousClose, 0);
+    } else if (meta.chartPreviousClose) {
+      prevClose = toFiniteNumber(meta.chartPreviousClose, 0);
     }
   }
 
@@ -1324,21 +1374,13 @@ function normalizeYahooChart(data, now) {
     changeAmount = price - prevClose;
     change24h = (changeAmount / prevClose) * 100;
   }
+  changeAmount = toFiniteNumber(changeAmount, 0);
+  change24h = toFiniteNumber(change24h, 0);
 
   // High, Low, Volume
-  var high24h = 0;
-  var low24h = 0;
-  var volume24h = 0;
-
-  if (meta.regularMarketDayHigh && !isNaN(meta.regularMarketDayHigh)) {
-    high24h = Number(meta.regularMarketDayHigh);
-  }
-  if (meta.regularMarketDayLow && !isNaN(meta.regularMarketDayLow)) {
-    low24h = Number(meta.regularMarketDayLow);
-  }
-  if (meta.regularMarketVolume && !isNaN(meta.regularMarketVolume)) {
-    volume24h = Number(meta.regularMarketVolume);
-  }
+  var high24h = toFiniteNumber(meta.regularMarketDayHigh, 0);
+  var low24h = toFiniteNumber(meta.regularMarketDayLow, 0);
+  var volume24h = toFiniteNumber(meta.regularMarketVolume, 0);
 
   // Fallback high/low/volume from today's bars if meta fields are missing/zero
   if (high24h <= 0 || low24h <= 0) {
@@ -1347,26 +1389,25 @@ function normalizeYahooChart(data, now) {
     var computedVol = 0;
     var startFilter = regStart > 0 ? regStart : 0;
     for (var m = 0; m < timestamps.length; m++) {
-      if (Number(timestamps[m]) >= startFilter) {
-        if (highs[m] !== null && !isNaN(highs[m])) {
-          var h = Number(highs[m]);
-          if (h > computedHigh) computedHigh = h;
-        }
-        if (lows[m] !== null && !isNaN(lows[m])) {
-          var l = Number(lows[m]);
-          if (l > 0 && l < computedLow) computedLow = l;
-        }
-        if (volumes[m] !== null && !isNaN(volumes[m])) {
-          computedVol += Number(volumes[m]);
-        }
+      if (toFiniteNumber(timestamps[m], 0) >= startFilter) {
+        var h = toFiniteNumber(highs[m], NaN);
+        if (Number.isFinite(h) && h > computedHigh) computedHigh = h;
+        var l = toFiniteNumber(lows[m], NaN);
+        if (Number.isFinite(l) && l > 0 && l < computedLow) computedLow = l;
+        var v = toFiniteNumber(volumes[m], 0);
+        if (v > 0) computedVol += v;
       }
     }
     if (high24h <= 0 && computedHigh !== -Infinity) high24h = computedHigh;
     if (low24h <= 0 && computedLow !== Infinity) low24h = computedLow;
     if (volume24h <= 0 && computedVol > 0) volume24h = computedVol;
   }
+  high24h = toFiniteNumber(high24h, price);
+  low24h = toFiniteNumber(low24h, price);
+  volume24h = toFiniteNumber(volume24h, 0);
 
-  var eventTime = lastTimestampSec > 0 ? (lastTimestampSec * 1000) : (meta.regularMarketTime ? Number(meta.regularMarketTime) * 1000 : recTime);
+  var eventTime = lastTimestampSec > 0 ? (lastTimestampSec * 1000) : (meta.regularMarketTime ? toFiniteNumber(meta.regularMarketTime, 0) * 1000 : recTime);
+  eventTime = toFiniteNumber(eventTime, recTime);
 
   return {
     asset: symbol,
@@ -1378,9 +1419,9 @@ function normalizeYahooChart(data, now) {
     provider: "yahoo",
     exchange: cat.exchange || meta.exchangeName || "Yahoo Finance",
     price: price,
-    change24h: isNaN(change24h) ? 0 : change24h,
-    changePercent24h: isNaN(change24h) ? 0 : change24h,
-    changeAmount: isNaN(changeAmount) ? 0 : changeAmount,
+    change24h: change24h,
+    changePercent24h: change24h,
+    changeAmount: changeAmount,
     previousClose: prevClose,
     open: openPrice > 0 ? openPrice : price,
     high24h: high24h > 0 ? high24h : price,
@@ -1416,13 +1457,16 @@ function normalizeYahooCandles(data) {
   var list = [];
   for (var i = 0; i < timestamps.length; i++) {
     var c = closes[i];
-    if (c === null || c === undefined || isNaN(c)) continue;
-    var closeVal = Number(c);
-    var o = (opens[i] !== null && opens[i] !== undefined && !isNaN(opens[i])) ? Number(opens[i]) : closeVal;
-    var h = (highs[i] !== null && highs[i] !== undefined && !isNaN(highs[i])) ? Number(highs[i]) : Math.max(o, closeVal);
-    var l = (lows[i] !== null && lows[i] !== undefined && !isNaN(lows[i])) ? Number(lows[i]) : Math.min(o, closeVal);
-    var v = (volumes[i] !== null && volumes[i] !== undefined && !isNaN(volumes[i])) ? Number(volumes[i]) : 0;
-    var t = Number(timestamps[i]) * 1000;
+    if (c === null || c === undefined || c === "") continue;
+    var rawClose = Number(c);
+    if (!Number.isFinite(rawClose)) continue;
+    var closeVal = rawClose;
+
+    var o = toFiniteNumber(opens[i], closeVal);
+    var h = toFiniteNumber(highs[i], Math.max(o, closeVal));
+    var l = toFiniteNumber(lows[i], Math.min(o, closeVal));
+    var v = toFiniteNumber(volumes[i], 0);
+    var t = toFiniteNumber(Number(timestamps[i]) * 1000, 0);
 
     list.push({
       time: t,

@@ -12,6 +12,11 @@ Item {
     command: ["sh", "-c", "kill -9 $PPID"]
   }
 
+  Process {
+    id: successExitProc
+    command: ["sh", "-c", "touch /tmp/omarchy_market_audit_success && kill -9 $PPID"]
+  }
+
   MarketService {
     id: marketService
   }
@@ -296,6 +301,6 @@ Item {
     console.log("✓ ALL REAL QUICKSHELL RUNTIME AUDIT CHECKS PASSED (100%)!");
     console.log("============================================================\n");
 
-    exitProc.running = true;
+    successExitProc.running = true;
   }
 }

@@ -22,17 +22,21 @@ echo "✓ All 3 provider bridges are running."
 
 echo -e "\n[Test 2] Fault Injection: Killing Binance Bridge (SIGKILL)..."
 BINANCE_PID=$(ps aux | grep "[w]s_bridge.js binance" | awk '{print $2}')
-if [ -n "$BINANCE_PID" ]; then
-  echo "Killing Binance PID: $BINANCE_PID..."
-  kill -9 "$BINANCE_PID"
-  sleep 3
-  NEW_BINANCE_PID=$(ps aux | grep "[w]s_bridge.js binance" | awk '{print $2}')
-  echo "New Binance PID after auto-recovery: $NEW_BINANCE_PID"
-  if [ -n "$NEW_BINANCE_PID" ] && [ "$NEW_BINANCE_PID" != "$BINANCE_PID" ]; then
-    echo "✓ Binance bridge crashed and successfully auto-recovered with new PID!"
-  else
-    echo "Warning: Binance PID not restarted yet or unchanged: $NEW_BINANCE_PID"
-  fi
+if [ -z "$BINANCE_PID" ]; then
+  echo "Error: Binance bridge process not found before fault injection!"
+  exit 1
+fi
+
+echo "Killing Binance PID: $BINANCE_PID..."
+kill -9 "$BINANCE_PID"
+sleep 3
+NEW_BINANCE_PID=$(ps aux | grep "[w]s_bridge.js binance" | awk '{print $2}')
+echo "New Binance PID after auto-recovery: $NEW_BINANCE_PID"
+if [ -n "$NEW_BINANCE_PID" ] && [ "$NEW_BINANCE_PID" != "$BINANCE_PID" ]; then
+  echo "✓ Binance bridge crashed and successfully auto-recovered with new PID!"
+else
+  echo "Error: Binance bridge not restarted or PID unchanged: $NEW_BINANCE_PID"
+  exit 1
 fi
 
 echo -e "\n[Test 3] Provider Isolation Verification..."
@@ -40,6 +44,9 @@ CB_PID=$(ps aux | grep "[w]s_bridge.js coinbase" | awk '{print $2}')
 HL_PID=$(ps aux | grep "[w]s_bridge.js hyperliquid" | awk '{print $2}')
 if [ -n "$CB_PID" ] && [ -n "$HL_PID" ]; then
   echo "✓ Coinbase (PID $CB_PID) and Hyperliquid (PID $HL_PID) remained live and unaffected during Binance outage!"
+else
+  echo "Error: Provider isolation check failed! Coinbase PID: '$CB_PID', Hyperliquid PID: '$HL_PID'"
+  exit 1
 fi
 
 echo -e "\n[Test 4] Rapid Plugin Disable / Enable Lifecycle (Clean Process Teardown)..."
@@ -63,6 +70,9 @@ FINAL_COUNT=$(find_bridges | grep -v "^$" | wc -l)
 echo "Final running bridges count: $FINAL_COUNT"
 if [ "$FINAL_COUNT" -eq 3 ]; then
   echo "✓ Re-enabled with exact 3 running bridges (zero process duplication)."
+else
+  echo "Error: Expected exactly 3 running bridges after re-enable, found $FINAL_COUNT"
+  exit 1
 fi
 
 echo -e "\n============================================================"

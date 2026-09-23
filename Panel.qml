@@ -200,6 +200,7 @@ Panel {
                         id: tabText
                         anchors.centerIn: parent
                         text: modelData
+                        textFormat: Text.PlainText
                         font.family: Style.font.family
                         font.pixelSize: Style.font.bodySmall
                         font.bold: tabItem.isCurrent
@@ -536,6 +537,7 @@ Panel {
 
                     Text {
                       text: catItem.asset
+                      textFormat: Text.PlainText
                       font.family: Style.font.family
                       font.pixelSize: Style.font.bodySmall
                       font.bold: true
@@ -544,6 +546,7 @@ Panel {
 
                     Text {
                       text: "• " + catItem.name
+                      textFormat: Text.PlainText
                       font.family: Style.font.family
                       font.pixelSize: Style.font.caption
                       color: Color.muted
@@ -648,6 +651,7 @@ Panel {
 
                     Text {
                       text: "★ " + assetName
+                      textFormat: Text.PlainText
                       font.family: Style.font.family
                       font.pixelSize: Style.font.bodySmall
                       font.bold: true
@@ -656,6 +660,7 @@ Panel {
 
                     Text {
                       text: "• " + catItem.name
+                      textFormat: Text.PlainText
                       font.family: Style.font.family
                       font.pixelSize: Style.font.caption
                       color: Color.muted
@@ -806,6 +811,7 @@ Panel {
                 spacing: Style.space(6)
                 Text {
                   text: root.activeQuote.symbol
+                  textFormat: Text.PlainText
                   font.family: Style.font.family
                   font.pixelSize: Style.font.caption
                   font.bold: true
@@ -813,6 +819,7 @@ Panel {
                 }
                 Text {
                   text: "• " + root.activeQuote.name
+                  textFormat: Text.PlainText
                   font.family: Style.font.family
                   font.pixelSize: Style.font.caption
                   color: Color.muted

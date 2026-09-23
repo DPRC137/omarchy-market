@@ -89,10 +89,18 @@ Item {
     var url = "https://query1.finance.yahoo.com/v1/finance/search?q=" + encodeURIComponent(q) + "&quotesCount=8&newsCount=0"
     try {
       var xhr = new XMLHttpRequest()
-      var abortedForSize = false
+      var finalized = false
+      function finalize(results) {
+        if (finalized) return
+        finalized = true
+        if (reqId === root.activeSearchRequestId && callback) {
+          callback(results || [])
+        }
+      }
+
       xhr.timeout = 5000
       xhr.onreadystatechange = function() {
-        if (abortedForSize) return
+        if (finalized) return
 
         if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
           try {
@@ -101,60 +109,90 @@ Item {
               var cl = parseInt(clHeader, 10)
               if (!isNaN(cl) && cl > root.maxSearchResponseBytes) {
                 console.warn("YahooProvider: search Content-Length exceeds ceiling (" + cl + " > " + root.maxSearchResponseBytes + ")")
-                abortedForSize = true
+                finalize([])
                 xhr.abort()
-                if (callback) callback([])
                 return
               }
             }
           } catch (eH) {}
         }
 
+        if (xhr.readyState === XMLHttpRequest.LOADING) {
+          try {
+            var loadLen = xhr.responseText ? xhr.responseText.length : 0
+            if (loadLen > root.maxSearchResponseBytes) {
+              console.warn("YahooProvider: search response text length exceeds ceiling during LOADING (" + loadLen + " > " + root.maxSearchResponseBytes + ")")
+              finalize([])
+              xhr.abort()
+              return
+            }
+          } catch (eL) {}
+        }
+
         if (xhr.readyState === XMLHttpRequest.DONE) {
+          if (finalized) return
           // Discard if a newer search request was initiated (out-of-order protection)
           if (reqId !== root.activeSearchRequestId) {
+            finalize([])
             return
           }
           if (xhr.status === 200) {
             var text = xhr.responseText || ""
             if (text.length > root.maxSearchResponseBytes) {
-              console.warn("YahooProvider: search responseText exceeds ceiling (" + text.length + " > " + root.maxSearchResponseBytes + ")")
-              if (callback) callback([])
+              console.warn("YahooProvider: search responseText exceeds ceiling at DONE (" + text.length + " > " + root.maxSearchResponseBytes + ")")
+              finalize([])
               return
             }
             try {
               var data = JSON.parse(text)
-              var rawQuotes = data.quotes || []
+              var rawQuotes = (data && Array.isArray(data.quotes)) ? data.quotes : []
               var filtered = []
+              var symbolRegex = /^[A-Z0-9.\-]{1,10}$/
               for (var i = 0; i < rawQuotes.length; i++) {
+                if (filtered.length >= 8) break
                 var item = rawQuotes[i]
-                if (!item || !item.symbol) continue
-                // Guardrail: Only accept EQUITY and ETF
+                if (!item || typeof item !== "object" || typeof item.symbol !== "string") continue
                 if (item.quoteType !== "EQUITY" && item.quoteType !== "ETF") continue
-                var sym = String(item.symbol).toUpperCase()
+                var sym = item.symbol.trim().toUpperCase()
+                if (!symbolRegex.test(sym)) continue
+
+                var displayName = sym
+                if (typeof item.shortname === "string" && item.shortname.trim()) {
+                  displayName = item.shortname.trim().slice(0, 100)
+                } else if (typeof item.longname === "string" && item.longname.trim()) {
+                  displayName = item.longname.trim().slice(0, 100)
+                }
+
+                var exch = "US"
+                if (typeof item.exchDisp === "string" && item.exchDisp.trim()) {
+                  exch = item.exchDisp.trim().slice(0, 30)
+                } else if (typeof item.exchange === "string" && item.exchange.trim()) {
+                  exch = item.exchange.trim().slice(0, 30)
+                }
+
                 filtered.push({
                   asset: sym,
-                  name: item.shortname || item.longname || sym,
+                  name: displayName,
                   assetClass: "stock",
                   instrument: sym + "_USD_STOCK",
-                  exchange: item.exchDisp || item.exchange || "US",
+                  exchange: exch,
                   quoteType: item.quoteType,
                   precision: 2,
                   providers: { yahoo: sym }
                 })
               }
-              if (callback) callback(filtered)
+              finalize(filtered)
             } catch (e) {
               console.warn("YahooProvider: search parse error:", e)
-              if (callback) callback([])
+              finalize([])
             }
           } else {
-            if (callback) callback([])
+            finalize([])
           }
         }
       }
-      xhr.onerror = function() { if (!abortedForSize && callback) callback([]) }
-      xhr.ontimeout = function() { if (!abortedForSize && callback) callback([]) }
+      xhr.onerror = function() { finalize([]) }
+      xhr.ontimeout = function() { finalize([]) }
       xhr.open("GET", url)
       xhr.setRequestHeader("User-Agent", root.userAgent)
       xhr.send()
@@ -272,9 +310,47 @@ Item {
       var xhr = new XMLHttpRequest()
       xhr.timeout = root.requestTimeoutMs
 
-      var abortedForSize = false
+      var finalized = false
+      function finalizeFailure(reason) {
+        if (finalized) return
+        finalized = true
+        handleNetworkFailure(task, reason)
+      }
+
+      function finalizeBackoff(status) {
+        if (finalized) return
+        finalized = true
+        console.warn("YahooProvider: rate limit / server error HTTP " + status + " for " + task.asset + ", backing off")
+        triggerBackoff()
+      }
+
+      function finalizeSuccess(responseText) {
+        if (finalized) return
+        finalized = true
+        try {
+          var data = JSON.parse(responseText)
+          var quote = MarketModel.normalizeYahooChart(data, Date.now())
+          if (quote && quote.asset) {
+            root.status = "CONNECTED"
+            root.backoffAttempts = 0
+            root.lastUpdateTimestamp = Date.now()
+            root.currentMarketState = quote.marketState || "regular"
+
+            var nextQuotes = Object.assign({}, root.quotes)
+            nextQuotes[quote.asset] = quote
+            root.quotes = nextQuotes
+            root.quoteReceived(quote.asset, quote)
+          }
+        } catch (err) {
+          console.warn("YahooProvider: parse error for quote " + symbol + ":", err)
+        }
+        finishRequest()
+        scheduleNextRequest(root.minRequestSpacingMs)
+      }
+
       xhr.onreadystatechange = function() {
-        if (abortedForSize) return
+        if (finalized) return
+
         if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
           try {
             var clHeader = xhr.getResponseHeader("Content-Length")
@@ -282,42 +358,50 @@ Item {
               var cl = parseInt(clHeader, 10)
               if (!isNaN(cl) && cl > root.maxDataResponseBytes) {
                 console.warn("YahooProvider: Content-Length exceeds ceiling for quote " + symbol + " (" + cl + " > " + root.maxDataResponseBytes + ")")
-                abortedForSize = true
+                finalizeFailure("response Content-Length exceeds byte ceiling")
                 xhr.abort()
-                handleNetworkFailure(task, "response exceeds byte ceiling")
                 return
               }
             }
           } catch (eH) {}
         }
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          handleResponse(xhr, task, function(responseText) {
-            try {
-              var data = JSON.parse(responseText)
-              var quote = MarketModel.normalizeYahooChart(data, Date.now())
-              if (quote && quote.asset) {
-                root.status = "CONNECTED"
-                root.backoffAttempts = 0
-                root.lastUpdateTimestamp = Date.now()
-                root.currentMarketState = quote.marketState || "regular"
 
-                var nextQuotes = Object.assign({}, root.quotes)
-                nextQuotes[quote.asset] = quote
-                root.quotes = nextQuotes
-                root.quoteReceived(quote.asset, quote)
-              }
-            } catch (err) {
-              console.warn("YahooProvider: parse error for quote " + symbol + ":", err)
+        if (xhr.readyState === XMLHttpRequest.LOADING) {
+          try {
+            var loadLen = xhr.responseText ? xhr.responseText.length : 0
+            if (loadLen > root.maxDataResponseBytes) {
+              console.warn("YahooProvider: quote response text length exceeds ceiling during LOADING (" + loadLen + " > " + root.maxDataResponseBytes + ")")
+              finalizeFailure("response stream exceeds byte ceiling")
+              xhr.abort()
+              return
             }
-          })
+          } catch (eL) {}
+        }
+
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+          if (finalized) return
+          var httpStatus = xhr.status
+          if (httpStatus === 200) {
+            var text = xhr.responseText || ""
+            if (text.length > root.maxDataResponseBytes) {
+              console.warn("YahooProvider: quote response text exceeded ceiling at DONE (" + text.length + " > " + root.maxDataResponseBytes + ")")
+              finalizeFailure("response exceeds byte ceiling")
+              return
+            }
+            finalizeSuccess(text)
+          } else if (httpStatus === 429 || httpStatus === 403 || httpStatus >= 500) {
+            finalizeBackoff(httpStatus)
+          } else {
+            finalizeFailure("HTTP " + httpStatus)
+          }
         }
       }
 
       xhr.onerror = function() {
-        handleNetworkFailure(task, "network error")
+        finalizeFailure("network error")
       }
       xhr.ontimeout = function() {
-        handleNetworkFailure(task, "timeout")
+        finalizeFailure("timeout")
       }
 
       xhr.open("GET", url)
@@ -354,9 +438,42 @@ Item {
       var xhr = new XMLHttpRequest()
       xhr.timeout = root.requestTimeoutMs
 
-      var abortedForSize = false
+      var finalized = false
+      function finalizeFailure(reason) {
+        if (finalized) return
+        finalized = true
+        handleNetworkFailure(task, reason)
+      }
+
+      function finalizeBackoff(status) {
+        if (finalized) return
+        finalized = true
+        console.warn("YahooProvider: rate limit / server error HTTP " + status + " for " + task.asset + ", backing off")
+        triggerBackoff()
+      }
+
+      function finalizeSuccess(responseText) {
+        if (finalized) return
+        finalized = true
+        try {
+          var data = JSON.parse(responseText)
+          var list = MarketModel.normalizeYahooCandles(data)
+          if (Array.isArray(list)) {
+            var cMap = Object.assign({}, root.candles)
+            cMap[symbol + "_" + tf] = list
+            root.candles = cMap
+            root.candlesReceived(symbol, tf, list)
+          }
+        } catch (err) {
+          console.warn("YahooProvider: parse error for candles " + symbol + " (" + tf + "):", err)
+        }
+        finishRequest()
+        scheduleNextRequest(root.minRequestSpacingMs)
+      }
+
       xhr.onreadystatechange = function() {
-        if (abortedForSize) return
+        if (finalized) return
+
         if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
           try {
             var clHeader = xhr.getResponseHeader("Content-Length")
@@ -364,37 +481,50 @@ Item {
               var cl = parseInt(clHeader, 10)
               if (!isNaN(cl) && cl > root.maxDataResponseBytes) {
                 console.warn("YahooProvider: Content-Length exceeds ceiling for candles " + symbol + " (" + cl + " > " + root.maxDataResponseBytes + ")")
-                abortedForSize = true
+                finalizeFailure("response Content-Length exceeds byte ceiling")
                 xhr.abort()
-                handleNetworkFailure(task, "response exceeds byte ceiling")
                 return
               }
             }
           } catch (eH) {}
         }
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          handleResponse(xhr, task, function(responseText) {
-            try {
-              var data = JSON.parse(responseText)
-              var list = MarketModel.normalizeYahooCandles(data)
-              if (Array.isArray(list)) {
-                var cMap = Object.assign({}, root.candles)
-                cMap[symbol + "_" + tf] = list
-                root.candles = cMap
-                root.candlesReceived(symbol, tf, list)
-              }
-            } catch (err) {
-              console.warn("YahooProvider: parse error for candles " + symbol + " (" + tf + "):", err)
+
+        if (xhr.readyState === XMLHttpRequest.LOADING) {
+          try {
+            var loadLen = xhr.responseText ? xhr.responseText.length : 0
+            if (loadLen > root.maxDataResponseBytes) {
+              console.warn("YahooProvider: candle response text length exceeds ceiling during LOADING (" + loadLen + " > " + root.maxDataResponseBytes + ")")
+              finalizeFailure("response stream exceeds byte ceiling")
+              xhr.abort()
+              return
             }
-          })
+          } catch (eL) {}
+        }
+
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+          if (finalized) return
+          var httpStatus = xhr.status
+          if (httpStatus === 200) {
+            var text = xhr.responseText || ""
+            if (text.length > root.maxDataResponseBytes) {
+              console.warn("YahooProvider: candle response text exceeded ceiling at DONE (" + text.length + " > " + root.maxDataResponseBytes + ")")
+              finalizeFailure("response exceeds byte ceiling")
+              return
+            }
+            finalizeSuccess(text)
+          } else if (httpStatus === 429 || httpStatus === 403 || httpStatus >= 500) {
+            finalizeBackoff(httpStatus)
+          } else {
+            finalizeFailure("HTTP " + httpStatus)
+          }
         }
       }
 
       xhr.onerror = function() {
-        handleNetworkFailure(task, "network error")
+        finalizeFailure("network error")
       }
       xhr.ontimeout = function() {
-        handleNetworkFailure(task, "timeout")
+        finalizeFailure("timeout")
       }
 
       xhr.open("GET", url)
@@ -403,36 +533,6 @@ Item {
     } catch (e) {
       handleNetworkFailure(task, String(e))
     }
-  }
-
-  function handleResponse(xhr, task, onSuccess) {
-    var httpStatus = xhr.status
-
-    if (httpStatus === 200) {
-      var text = xhr.responseText || ""
-      if (text.length > root.maxDataResponseBytes) {
-        console.warn("YahooProvider: response text exceeded ceiling for " + task.asset + " (" + text.length + " > " + root.maxDataResponseBytes + ")")
-        finishRequest()
-        scheduleNextRequest(root.minRequestSpacingMs)
-        return
-      }
-      if (onSuccess) onSuccess(text)
-      finishRequest()
-      scheduleNextRequest(root.minRequestSpacingMs)
-      return
-    }
-
-    // Rate-limit or server error conditions: 429, 403, 5xx
-    if (httpStatus === 429 || httpStatus === 403 || httpStatus >= 500) {
-      console.warn("YahooProvider: rate limit / server error HTTP " + httpStatus + " for " + task.asset + ", backing off")
-      triggerBackoff()
-      return
-    }
-
-    // Other non-200 responses (e.g. 404 / 400)
-    console.warn("YahooProvider: HTTP " + httpStatus + " for " + task.asset)
-    finishRequest()
-    scheduleNextRequest(root.minRequestSpacingMs)
   }
 
   function handleNetworkFailure(task, reason) {

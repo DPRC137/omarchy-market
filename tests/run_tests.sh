@@ -34,7 +34,32 @@ node tests/test_runtime_faults.js
 node tests/test_v121_regressions.js
 
 echo -e "\n4. Running real Quickshell runtime audit..."
-timeout 15s quickshell -p test_runtime.qml || true
+MARKER="/tmp/omarchy_market_audit_success"
+rm -f "$MARKER"
+
+set +e
+timeout 15s quickshell -p test_runtime.qml
+QS_EXIT=$?
+set -e
+
+# Expected termination is 137 (128 + 9 = SIGKILL from intentional self-termination process)
+if [ "$QS_EXIT" -ne 137 ]; then
+  if [ "$QS_EXIT" -eq 124 ]; then
+    echo "ERROR: Quickshell runtime audit timed out after 15 seconds!"
+  else
+    echo "ERROR: Quickshell runtime audit exited with unexpected status $QS_EXIT (expected 137 from self-termination)"
+  fi
+  rm -f "$MARKER"
+  exit 1
+fi
+
+if [ ! -f "$MARKER" ]; then
+  echo "ERROR: Quickshell terminated but success marker was not created (audit assertions failed)!"
+  exit 1
+fi
+
+rm -f "$MARKER"
+echo "✓ Quickshell runtime audit passed with clean termination and verified success marker."
 
 echo -e "\n============================================================"
 echo "ALL TESTS PASSED SUCCESSFULLY! ✓"
