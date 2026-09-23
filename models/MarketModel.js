@@ -874,12 +874,8 @@ function deserializeWatchlist(rawString) {
       if (!assetKey || seen[assetKey]) continue;
 
       var catalogEntry = getCatalogItem(assetKey);
-      if (!catalogEntry) {
-        // Unknown stock instrument: pass through canonical dynamic registration path
-        var registered = registerDynamicInstrument(it);
-        if (registered) {
-          catalogEntry = registered;
-        }
+      if (!catalogEntry && it.assetClass === "stock") {
+        catalogEntry = registerDynamicInstrument(it);
       }
       if (!catalogEntry) continue; // Discard invalid dynamic entries
 

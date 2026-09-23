@@ -20,11 +20,27 @@ const provider = rawProvider;
 const rawSymbolsArg = process.argv[3] || "";
 let activeSymbols = parseSymbols(rawSymbolsArg);
 
+function sanitizeSymbols(symbols) {
+  const arr = Array.isArray(symbols)
+    ? symbols
+    : (typeof symbols === "string" ? symbols.split(",") : []);
+  const seen = new Set();
+  const result = [];
+  for (const s of arr) {
+    if (typeof s !== "string") continue;
+    const clean = s.trim().toUpperCase();
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+    result.push(clean);
+  }
+  return result;
+}
+
 function parseSymbols(str) {
   if (!str) {
     return provider === "hyperliquid" ? ["BTC", "ETH", "SOL", "HYPE"] : ["BTC", "ETH", "SOL"];
   }
-  const list = str.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+  const list = sanitizeSymbols(str);
   return list.length > 0 ? list : (provider === "hyperliquid" ? ["BTC", "ETH", "SOL", "HYPE"] : ["BTC", "ETH", "SOL"]);
 }
 
@@ -68,6 +84,7 @@ function connect() {
   clearAllTimers();
 
   emit({ type: "status", provider, status: "CONNECTING" });
+  emit({ type: "subscriptions", provider, action: "initial", symbols: activeSymbols.slice() });
 
   try {
     if (provider === "binance") {
@@ -193,11 +210,12 @@ function connectHyperliquid() {
 function handleStdinCommand(cmdObj) {
   if (!cmdObj || typeof cmdObj !== "object") return;
   const action = cmdObj.action || cmdObj.cmd;
-  const symbols = Array.isArray(cmdObj.symbols) ? cmdObj.symbols.map(s => String(s).toUpperCase()) : [];
+  const symbols = sanitizeSymbols(cmdObj.symbols);
 
   if (action === "set_subscriptions") {
     const oldSymbols = activeSymbols;
     activeSymbols = symbols;
+    emit({ type: "subscriptions", provider, action: "set_subscriptions", symbols: activeSymbols.slice() });
 
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
@@ -254,10 +272,12 @@ function handleStdinCommand(cmdObj) {
     }
   } else if (action === "subscribe") {
     const newSyms = symbols.filter(s => !activeSymbols.includes(s));
-    if (newSyms.length === 0) return;
-    activeSymbols = activeSymbols.concat(newSyms);
+    if (newSyms.length > 0) {
+      activeSymbols = activeSymbols.concat(newSyms);
+    }
+    emit({ type: "subscriptions", provider, action: "subscribe", symbols: activeSymbols.slice() });
 
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (newSyms.length === 0 || !ws || ws.readyState !== WebSocket.OPEN) return;
 
     if (provider === "binance") {
       const streams = getBinanceStreams(newSyms);
@@ -284,6 +304,8 @@ function handleStdinCommand(cmdObj) {
     }
   } else if (action === "unsubscribe") {
     activeSymbols = activeSymbols.filter(s => !symbols.includes(s));
+    emit({ type: "subscriptions", provider, action: "unsubscribe", symbols: activeSymbols.slice() });
+
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
     if (provider === "binance") {

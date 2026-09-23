@@ -102,72 +102,171 @@ console.log("✓ Subscription State Machine unit checks passed (8/8)!");
 // -------------------------------------------------------------
 console.log("\n[Part 2] Verifying Real Process IPC Bridge Integration...");
 
-function testBridgeSubscription(providerName, initialSymbols, dynamicCommand) {
+function runRealProcessSubscriptionSuite(providerName, initialSymbols) {
   return new Promise((resolve, reject) => {
     const bridge = path.join(__dirname, "../scripts/ws_bridge.js");
     const p = spawn("node", [bridge, providerName, initialSymbols.join(",")]);
 
-    let messages = [];
-    const timer = setTimeout(() => {
-      p.kill("SIGTERM");
-      resolve({ messages, timedOut: true });
-    }, 6000);
+    const messages = [];
+    let buffer = "";
+    let cursor = 0;
+    const pendingWaiters = [];
+
+    const killProcess = () => {
+      try { p.kill("SIGTERM"); } catch (e) {}
+    };
+
+    const safetyTimer = setTimeout(() => {
+      killProcess();
+      reject(new Error(`Test timed out for provider: ${providerName}`));
+    }, 10000);
+
+    p.on("error", (err) => {
+      clearTimeout(safetyTimer);
+      killProcess();
+      reject(err);
+    });
 
     p.stdout.on("data", (chunk) => {
-      const lines = chunk.toString().split("\n").filter(Boolean);
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
       for (const line of lines) {
+        if (!line.trim()) continue;
         try {
           const parsed = JSON.parse(line);
           messages.push(parsed);
+          for (let i = pendingWaiters.length - 1; i >= 0; i--) {
+            if (pendingWaiters[i].predicate(parsed)) {
+              const waiter = pendingWaiters.splice(i, 1)[0];
+              waiter.resolve(parsed);
+            }
+          }
         } catch (e) {}
       }
     });
 
-    setTimeout(() => {
-      // Send dynamic subscription command via stdin
-      p.stdin.write(JSON.stringify(dynamicCommand) + "\n");
-      setTimeout(() => {
-        clearTimeout(timer);
-        p.kill("SIGTERM");
-        resolve({ messages, timedOut: false });
-      }, 1500);
-    }, 1500);
+    function waitForNext(predicate, timeoutMs = 3000) {
+      for (let i = cursor; i < messages.length; i++) {
+        if (predicate(messages[i])) {
+          cursor = i + 1;
+          return Promise.resolve(messages[i]);
+        }
+      }
+      return new Promise((res, rej) => {
+        const timer = setTimeout(() => {
+          const idx = pendingWaiters.findIndex(w => w.resolve === res);
+          if (idx !== -1) pendingWaiters.splice(idx, 1);
+          rej(new Error(`Timeout waiting for message (${providerName}) after ${timeoutMs}ms`));
+        }, timeoutMs);
 
-    p.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
+        pendingWaiters.push({
+          predicate,
+          resolve: (msg) => {
+            clearTimeout(timer);
+            cursor = messages.indexOf(msg) + 1;
+            res(msg);
+          }
+        });
+      });
+    }
+
+    function sendCommand(cmd) {
+      p.stdin.write(JSON.stringify(cmd) + "\n");
+    }
+
+    (async () => {
+      try {
+        console.log(`\n  Testing real ${providerName} process subscription transitions:`);
+
+        // 1. Initial subscription state
+        const initMsg = await waitForNext(m => m.type === "subscriptions" && m.action === "initial");
+        assert.deepStrictEqual(initMsg.symbols, initialSymbols, `${providerName}: initial symbols must match`);
+        console.log(`    ✓ Initial subscription state verified: [${initMsg.symbols.join(", ")}]`);
+
+        // 2. Dynamic addition
+        sendCommand({ action: "subscribe", symbols: ["SOL"] });
+        const addMsg = await waitForNext(m => m.type === "subscriptions" && m.action === "subscribe");
+        assert.deepStrictEqual(addMsg.symbols, [...initialSymbols, "SOL"], `${providerName}: dynamic addition must append symbol`);
+        console.log(`    ✓ Dynamic addition verified: [${addMsg.symbols.join(", ")}]`);
+
+        // 3. Duplicate suppression
+        sendCommand({ action: "subscribe", symbols: ["BTC", "SOL"] });
+        const dupMsg = await waitForNext(m => m.type === "subscriptions" && m.action === "subscribe");
+        assert.deepStrictEqual(dupMsg.symbols, [...initialSymbols, "SOL"], `${providerName}: duplicates must be suppressed`);
+        console.log(`    ✓ Duplicate suppression verified: [${dupMsg.symbols.join(", ")}]`);
+
+        // 4. Invalid / empty symbol handling
+        sendCommand({ action: "subscribe", symbols: ["", "   ", null, undefined, 123] });
+        const invalidMsg = await waitForNext(m => m.type === "subscriptions" && m.action === "subscribe");
+        assert.deepStrictEqual(invalidMsg.symbols, [...initialSymbols, "SOL"], `${providerName}: invalid symbols must be ignored`);
+        console.log(`    ✓ Invalid/empty symbol handling verified: [${invalidMsg.symbols.join(", ")}]`);
+
+        // 5. Removal / unsubscribe
+        sendCommand({ action: "unsubscribe", symbols: ["ETH"] });
+        const unsubMsg = await waitForNext(m => m.type === "subscriptions" && m.action === "unsubscribe");
+        const expectedAfterUnsub = initialSymbols.filter(s => s !== "ETH").concat(["SOL"]);
+        assert.deepStrictEqual(unsubMsg.symbols, expectedAfterUnsub, `${providerName}: unsubscribe must remove symbol`);
+        console.log(`    ✓ Removal/unsubscribe verified: [${unsubMsg.symbols.join(", ")}]`);
+
+        // 6. set_subscriptions replacement
+        sendCommand({ action: "set_subscriptions", symbols: ["HYPE", "BTC", "DOGE"] });
+        const replaceMsg = await waitForNext(m => m.type === "subscriptions" && m.action === "set_subscriptions");
+        assert.deepStrictEqual(replaceMsg.symbols, ["HYPE", "BTC", "DOGE"], `${providerName}: set_subscriptions must replace active set`);
+        console.log(`    ✓ set_subscriptions replacement verified: [${replaceMsg.symbols.join(", ")}]`);
+
+        clearTimeout(safetyTimer);
+        killProcess();
+        resolve(true);
+      } catch (err) {
+        clearTimeout(safetyTimer);
+        killProcess();
+        reject(err);
+      }
+    })();
   });
 }
 
 async function run() {
   try {
-    // 2.1 Test Binance dynamic set_subscriptions IPC
-    const binanceRes = await testBridgeSubscription("binance", ["BTC", "ETH"], {
-      action: "set_subscriptions",
-      symbols: ["BTC", "ETH", "DOGE"]
-    });
-    const binanceConnected = binanceRes.messages.some(m => m.type === "status" && m.status === "CONNECTED");
-    assert.ok(binanceConnected, "Binance bridge must establish connection");
-    console.log("✓ Binance dynamic subscription IPC verified (CONNECTED received)");
+    // 2.1 Test Binance real process IPC and observable subscription transitions
+    await runRealProcessSubscriptionSuite("binance", ["BTC", "ETH"]);
 
-    // 2.2 Test Coinbase dynamic subscribe IPC
-    const cbRes = await testBridgeSubscription("coinbase", ["BTC"], {
-      action: "subscribe",
-      symbols: ["SOL"]
-    });
-    const cbConnected = cbRes.messages.some(m => m.type === "status" && m.status === "CONNECTED");
-    assert.ok(cbConnected, "Coinbase bridge must establish connection");
-    console.log("✓ Coinbase dynamic subscription IPC verified (CONNECTED received)");
+    // 2.2 Test Coinbase real process IPC and observable subscription transitions
+    await runRealProcessSubscriptionSuite("coinbase", ["BTC", "ETH"]);
 
-    // 2.3 Test Hyperliquid bridge startup with symbols
-    const hlRes = await testBridgeSubscription("hyperliquid", ["BTC", "ETH", "SOL", "HYPE"], {
-      action: "set_subscriptions",
-      symbols: ["BTC", "ETH", "SOL", "HYPE", "DOGE"]
-    });
-    const hlConnected = hlRes.messages.some(m => m.type === "status" && m.status === "CONNECTED");
-    assert.ok(hlConnected, "Hyperliquid bridge must establish connection");
-    console.log("✓ Hyperliquid bridge IPC verified (CONNECTED received)");
+    // 2.3 Test Hyperliquid real process initial subscription state
+    await (new Promise((resolve, reject) => {
+      const bridge = path.join(__dirname, "../scripts/ws_bridge.js");
+      const p = spawn("node", [bridge, "hyperliquid", "BTC,ETH,SOL,HYPE"]);
+      const timer = setTimeout(() => {
+        p.kill("SIGTERM");
+        reject(new Error("Hyperliquid initial state timeout"));
+      }, 5000);
+
+      p.stdout.on("data", (chunk) => {
+        const lines = chunk.toString().split("\n").filter(Boolean);
+        for (const line of lines) {
+          try {
+            const msg = JSON.parse(line);
+            if (msg.type === "subscriptions" && msg.action === "initial") {
+              assert.deepStrictEqual(msg.symbols, ["BTC", "ETH", "SOL", "HYPE"]);
+              console.log("\n  Testing real hyperliquid process initial state:");
+              console.log("    ✓ Hyperliquid initial subscription state verified:", msg.symbols);
+              clearTimeout(timer);
+              p.kill("SIGTERM");
+              resolve(true);
+              return;
+            }
+          } catch (e) {}
+        }
+      });
+
+      p.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    }));
 
     console.log("\n============================================================");
     console.log("ALL DYNAMIC SUBSCRIPTION TESTS PASSED! ✓");

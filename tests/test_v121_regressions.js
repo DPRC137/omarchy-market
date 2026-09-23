@@ -988,25 +988,32 @@ assert.strictEqual(canonicalTsla.precision, 8, "Precision must clamp to maximum 
 assert.strictEqual(canonicalTsla.aliases.length, 1);
 assert.strictEqual(canonicalTsla.aliases[0], "tsla", "Hostile aliases must be overwritten with canonical symbol");
 
-// 4. Watchlist deserialization rejects malformed dynamic entries
-const hostileWatchlistJson = JSON.stringify({
+// 4. Watchlist deserialization rejects malformed or non-stock dynamic entries
+const mixedWatchlistJson = JSON.stringify({
   version: 2,
   items: [
     { asset: "BTC", name: "Bitcoin", assetClass: "crypto" },
+    { asset: "ETH", name: "Ethereum", assetClass: "crypto" },
+    { asset: "PLTR", name: "Palantir Technologies", assetClass: "stock" },
+    { asset: "FAKECOIN", name: "Unknown Crypto", assetClass: "crypto" },
+    { asset: "UNKNOWN", name: "No AssetClass" },
     { asset: "<script>alert(1)</script>", name: "XSS", assetClass: "stock" },
-    { asset: "NVDA", name: "NVIDIA Corporation", assetClass: "stock" },
     { asset: "A/B", name: "Invalid Slash", assetClass: "stock" }
   ]
 });
 
 sandbox.clearDynamicInstruments();
-const cleanedWl = sandbox.deserializeWatchlist(hostileWatchlistJson);
-assert.strictEqual(cleanedWl.items.length, 2, "Only valid items (BTC, NVDA) should survive deserialization");
-assert.strictEqual(cleanedWl.items[0].asset, "BTC");
-assert.strictEqual(cleanedWl.items[1].asset, "NVDA");
+const deserializedWl = sandbox.deserializeWatchlist(mixedWatchlistJson);
+assert.strictEqual(deserializedWl.items.length, 3, "Only BTC, ETH, and PLTR should survive deserialization");
+assert.strictEqual(deserializedWl.items[0].asset, "BTC", "Static crypto BTC accepted");
+assert.strictEqual(deserializedWl.items[1].asset, "ETH", "Static crypto ETH accepted");
+assert.strictEqual(deserializedWl.items[2].asset, "PLTR", "Unknown dynamic stock PLTR accepted");
+assert.strictEqual(sandbox.getCatalogItem("FAKECOIN"), null, "Unknown crypto must NOT be dynamically registered");
+assert.strictEqual(sandbox.getCatalogItem("UNKNOWN"), null, "Unknown entry without stock assetClass must NOT be registered");
 assert.strictEqual(sandbox.getCatalogItem("<script>alert(1)</script>"), null);
 assert.strictEqual(sandbox.getCatalogItem("A/B"), null);
-assert.notStrictEqual(sandbox.getCatalogItem("NVDA"), null);
+assert.notStrictEqual(sandbox.getCatalogItem("PLTR"), null);
+assert.strictEqual(sandbox.getCatalogItem("PLTR").assetClass, "stock");
 
 console.log("✓ Test N Passed: Dynamic stock symbols strictly validated (/^[A-Z0-9.\\-]{1,10}$/); hijacking and injection attacks completely prevented.");
 
