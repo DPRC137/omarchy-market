@@ -1433,10 +1433,10 @@ function formatPrice(value, precision, currency) {
   return (currency === "USD" || currency === undefined ? "$" : (currency || "?") + " ") + parts.join(".");
 }
 
-function formatCompactPrice(value, currency) {
+function formatCompactPrice(value, currency, omitCurrency) {
   var num = optionalNumber(value);
   if (num === null || num <= 0) return "—";
-  var prefix = currency === "USD" || currency === undefined ? "$" : (currency || "?") + " ";
+  var prefix = omitCurrency ? "" : currency === "USD" || currency === undefined ? "$" : (currency || "?") + " ";
   var text = num >= 1e6 ? (num / 1e6).toFixed(2) + "M" : num >= 1000 ? (num / 1000).toFixed(num >= 10000 ? 1 : 2) + "K" : num.toFixed(num >= 10 ? 1 : num >= 1 ? 2 : num >= 0.01 ? 3 : 4);
   return prefix + text;
 }

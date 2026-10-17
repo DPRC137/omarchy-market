@@ -9,6 +9,9 @@ history. The legacy `aggregate` API name remains an alias for that selection:
 | HYPE | Hyperliquid | HYPE Perp | USDC | Mark |
 | Equities / ETFs | Yahoo | Exact Yahoo symbol | Metadata currency, case preserved | Regular-session last |
 
+Compact bar prices omit crypto currency codes for readability, without adding
+a dollar sign. Tooltips and detail prices always identify the quote currency.
+
 USD and USDT are distinct. There is no price averaging, currency conversion,
 provider failover, or Spot-to-Perp substitution. Comparison rows are independent
 and labelled Spot / Perp / Equity. Hyperliquid candle closes are **trade prices**;

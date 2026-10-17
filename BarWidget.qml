@@ -15,7 +15,7 @@ BarWidget {
   readonly property string currentAsset: (watchlist && watchlist.length > 0) ? (marketService && !marketService.rotationEnabled && watchlist.indexOf(marketService.pinnedAsset) >= 0 ? marketService.pinnedAsset : watchlist[currentAssetIndex % watchlist.length] || "BTC") : "BTC"
   readonly property var currentQuote: (marketService && updateRevision >= 0) ? marketService.getQuote(currentAsset, "aggregate") : MarketModel.createEmptyQuote(currentAsset, "aggregate")
 
-  // Default to clean cycling single-asset display so it never collides with center clock
+  // Compact single-asset display; rotation remains an explicit user setting.
   property bool multiAssetMode: setting("multiAsset", false)
   property int tickerSpeedMs: setting("speed", 4000)
 
@@ -26,7 +26,7 @@ BarWidget {
     var q = currentQuote
     if (q && q.price > 0) {
       var arrow = q.change24h >= 0 ? "▲" : "▼"
-      return currentAsset + " " + MarketModel.formatCompactPrice(q.price, q.currency) + " " + arrow + (q.change24h === null ? "—" : Math.abs(q.change24h).toFixed(1) + "%") + (q.freshness === "STALE" ? " · stale" : "")
+      return currentAsset + " " + MarketModel.formatCompactPrice(q.price, q.currency, q.assetClass === "crypto") + " " + arrow + (q.change24h === null ? "—" : Math.abs(q.change24h).toFixed(1) + "%") + (q.freshness === "STALE" ? " · stale" : "")
     }
     return currentAsset + " ..."
   }
@@ -42,7 +42,7 @@ BarWidget {
       var q = marketService.getQuote(sym, "aggregate")
       if (q && q.price > 0) {
         var arrow = q.change24h >= 0 ? "▲" : "▼"
-        parts.push(sym + " " + MarketModel.formatCompactPrice(q.price, q.currency) + " " + arrow + (q.change24h === null ? "—" : Math.abs(q.change24h).toFixed(1) + "%") + (q.freshness === "STALE" ? " · stale" : ""))
+        parts.push(sym + " " + MarketModel.formatCompactPrice(q.price, q.currency, q.assetClass === "crypto") + " " + arrow + (q.change24h === null ? "—" : Math.abs(q.change24h).toFixed(1) + "%") + (q.freshness === "STALE" ? " · stale" : ""))
       }
     }
     return parts.join(" · ")
@@ -65,17 +65,12 @@ BarWidget {
   }
 
   function togglePanel() {
-    if (panelLoader.item) {
-      panelLoader.item.selectedAsset = root.currentAsset
-      panelLoader.item.toggle()
-    }
+    if (root.opened) root.close()
+    else root.open()
   }
 
   function open() {
-    if (panelLoader.item) {
-      panelLoader.item.selectedAsset = root.currentAsset
-      panelLoader.item.open()
-    }
+    if (panelLoader.item) panelLoader.item.openAsset(root.currentAsset)
   }
 
   function close() {
@@ -89,7 +84,27 @@ BarWidget {
     if (panelLoader.item) panelLoader.item.closeForPopoutSwitch()
   }
 
-  onBarChanged: injectPanel()
+  property bool hoverGuardActive: false
+  property var hoverGuardBar: null
+  function syncHoverGuard() {
+    if (hoverGuardBar && hoverGuardBar !== root.bar) {
+      hoverGuardBar.setCenterHoverRevealSuppressed(false)
+      hoverGuardActive = false
+      hoverGuardBar = null
+    }
+    var suppress = buttonHover.hovered || root.opened
+    if (root.bar && typeof root.bar.setCenterHoverRevealSuppressed === "function" && (suppress || hoverGuardActive)) {
+      root.bar.setCenterHoverRevealSuppressed(suppress)
+      hoverGuardActive = suppress
+      hoverGuardBar = suppress ? root.bar : null
+    }
+  }
+  onOpenedChanged: {
+    syncHoverGuard()
+    if (opened) Qt.callLater(root.syncHoverGuard)
+  }
+  Component.onDestruction: if (hoverGuardBar) hoverGuardBar.setCenterHoverRevealSuppressed(false)
+  onBarChanged: { injectPanel(); syncHoverGuard() }
   onSettingsChanged: injectPanel()
 
   // Auto-cycling timer for smooth ticker rotation
@@ -116,6 +131,7 @@ BarWidget {
 
   HoverHandler {
     id: buttonHover
+    onHoveredChanged: root.syncHoverGuard()
   }
 
   clip: true
@@ -124,8 +140,8 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.vertical ? (root.currentAsset + "\n" + MarketModel.formatCompactPrice(root.currentQuote.price, root.currentQuote.currency)) : root.displayTickerText
-    tooltipText: "Omarchy Market (Click to open terminal, Middle-click to refresh, Right-click to switch asset)"
+    text: root.vertical ? (root.currentAsset + "\n" + MarketModel.formatCompactPrice(root.currentQuote.price, root.currentQuote.currency, root.currentQuote.assetClass === "crypto")) : root.displayTickerText
+    tooltipText: root.currentAsset + " · " + MarketModel.providerDisplayName(root.currentQuote.provider) + " · " + root.currentQuote.symbol + " · " + root.currentQuote.priceType + "\n" + MarketModel.formatPrice(root.currentQuote.price, undefined, root.currentQuote.currency) + " · " + root.currentQuote.freshness + "\nClick for chart · Middle-click refresh · Right-click next asset"
 
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.MiddleButton) {
@@ -139,6 +155,7 @@ BarWidget {
     }
   }
 
-  implicitWidth: root.vertical ? barSize : Style.space(220)
+  readonly property real openPanelIndicatorWidth: button.labelWidth
+  implicitWidth: root.vertical ? barSize : button.implicitWidth
   implicitHeight: root.vertical ? button.implicitHeight : barSize
 }

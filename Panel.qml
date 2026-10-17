@@ -38,6 +38,12 @@ Panel {
   })
 
   function open() { view = "watchlist"; controller.show() }
+  function openAsset(asset) {
+    selectedAsset = asset
+    view = "detail"
+    controller.show()
+    syncChart()
+  }
   function close() { controller.hide(); view = "watchlist"; searchQuery = "" }
   function toggle() { opened ? close() : open() }
   function syncChart() {

@@ -7,7 +7,8 @@ No accounts, API keys, npm packages, or background daemons.
 
 ## Watchlist and detail
 
-The popup opens with compact watchlist rows. Select a row for source-labelled
+Click the bar ticker to open that instrument’s chart directly. Back shows compact
+watchlist rows. Select any row for source-labelled
 prices, regular-session equity metrics or rolling 24-hour crypto metrics, native
 Canvas history, and an expandable Spot/Perp comparison. Back returns to the list.
 Manage searches the local catalog and Yahoo stocks/ETFs; arrows and Enter add
@@ -55,10 +56,11 @@ Remove with `omarchy plugin remove io.github.dpr.omarchy-market`.
 
 ## Controls and settings
 
-- Bar left-click: watchlist popup. Middle-click: refresh quotes and any visible
+- Bar left-click: chart for the displayed instrument. Back opens the watchlist. Middle-click: refresh quotes and any visible
   history. Right-click: cycle and pin a bar instrument.
 - Detail **Pin to bar**: choose a stable asset. Rotation is off by default and
-  can be enabled in Manage. The bar slot keeps a fixed width.
+  can be enabled in Manage. The bar fits its text, and hovering keeps neighboring indicator reveals from
+  shifting it. Crypto bar prices omit quote codes; tooltip and detail preserve them.
 - **Tab / Shift+Tab**: move between controls and rows. **Enter / Space** activates.
 - **Escape**: Back from detail/Manage, then close. **R** refreshes outside search;
   **/** opens Manage and focuses search. Search supports Up/Down and Enter.
@@ -82,6 +84,7 @@ bash tests/run_tests.sh       # portable production-module checks, also run in C
 bash tests/lint_qml.sh        # Qt/Quattro imports required
 node tests/run_native.js      # real QML XHR, deadlines, settings restart, cleanup
 node tests/run_ui.js          # real Wayland popup, pointer and keyboard checks
+node tests/run_ui.js ticker   # compact bar, hover, direct asset chart and rotation
 ./scripts/live-test.sh        # optional external WebSocket connectivity
 ```
 

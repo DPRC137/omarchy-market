@@ -38,7 +38,9 @@ processes or changing the user's enabled plugins. The historical
 - `node tests/run_ui.js`: requires Wayland, QtTest and installed Quattro imports.
   It renders the real popup in a temporary host and drives Qt pointer/keyboard
   events: row -> detail, Back/Escape, search typing/arrows/Enter, Tab, Undo and
-  close cleanup. Enlarged font/spacing is exercised. It never replaces or
+  close cleanup. Enlarged font/spacing is exercised. `node tests/run_ui.js ticker`
+  also checks the actual bar widget: content sizing, hover guard/cleanup, direct
+  displayed-asset chart opening, currency metadata and optional rotation. It never replaces or
   disables the installed shell. It is a short integration check, not exhaustive
   accessibility or multi-monitor QA.
 - `./scripts/live-test.sh`: optional live WebSocket probe. Network, regional
