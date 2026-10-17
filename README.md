@@ -24,7 +24,8 @@ Missing data appears as `—`. Equity volume is shares, not dollars.
 Connection state, quote age and session status are separate. Last-known values
 stay visible with age and freshness when a feed fails. History has loading,
 unavailable, stale-cache and retry states. `1D / 1W / 1M / 1Y` mean consistent
-calendar spans, with actual dates, interval and source shown beneath the chart.
+periods, with actual dates, interval and source shown beneath the chart. Equity
+1D shows the latest regular session across closures; crypto 1D is 24 hours.
 See [exact semantics](docs/SEMANTICS.md).
 
 ## Requirements
@@ -85,6 +86,7 @@ bash tests/lint_qml.sh        # Qt/Quattro imports required
 node tests/run_native.js      # real QML XHR, deadlines, settings restart, cleanup
 node tests/run_ui.js          # real Wayland popup, pointer and keyboard checks
 node tests/run_ui.js ticker   # compact bar, hover, direct asset chart and rotation
+node tests/run_ui.js equity   # optional live Yahoo session-chart regression
 ./scripts/live-test.sh        # optional external WebSocket connectivity
 ```
 

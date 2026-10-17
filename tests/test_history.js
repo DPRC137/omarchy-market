@@ -55,7 +55,9 @@ assert.equal(direct.state, 'ready');
 for (const range of H.RANGES) {
   const b = H.specification('BTC', 'binance', range, now);
   const y = H.specification('AAPL', 'yahoo', range, now);
-  assert.equal(b.from, y.from); assert.equal(b.to, y.to);
+  if (range === "1D") { assert.equal(y.window, "session"); assert.equal(y.from, null); }
+  else assert.equal(b.from, y.from);
+  assert.equal(b.to, y.to);
   assert.ok(!b.url.includes('hyperliquid'));
 }
 assert.throws(() => H.normalize([{ s: 'BTC', i: '1h', t: now - 1000, c: '1' }], H.specification('HYPE', 'hyperliquid', '1D', now)), /Unexpected/);

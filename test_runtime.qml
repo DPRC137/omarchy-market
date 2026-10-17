@@ -10,21 +10,32 @@ ShellRoot {
   id: root
   property int finished: 0
   property bool failed: false
+  property bool sessionChecked: false
   property string baseUrl: Quickshell.env("MARKET_TEST_URL")
   function check(condition, message) {
     if (!condition) { failed = true; console.error("NATIVE_FAIL", message) }
   }
   function done() {
     finished++
-    if (finished === 5) {
+    if (finished === 6) {
       check(!service.provider("binance").childProcessRunning, "Binance process remained after stock-only migration")
       check(!service.provider("coinbase").childProcessRunning, "Coinbase process remained after stock-only migration")
-      if (!failed) console.log("NATIVE_PASS: QML service, stock-only cleanup, ordered undo, settings, search errors, HTTP parse/failure/Qt timeout/cancellation")
+      if (!failed) console.log("NATIVE_PASS: QML service, stock-only cleanup, ordered undo, settings, search errors, HTTP parse/failure/Qt timeout/cancellation, empty-session recovery")
       Qt.quit()
     }
   }
   MarketService { id: service }
   HttpClient { id: http }
+  Connections {
+    target: service
+    function onCandlesUpdated(asset, range, candles) {
+      if (asset !== "TSLA" || candles.length === 0 || root.sessionChecked) return
+      root.sessionChecked = true
+      root.check(candles.length === 79 && service.history.entry().sessionDate === "2026-10-16", "Native empty-session recovery did not retain the actual last session")
+      service.removeMarket("TSLA")
+      root.done()
+    }
+  }
   Timer {
     interval: 250; running: true
     onTriggered: {
@@ -45,10 +56,15 @@ ShellRoot {
       service.pinnedAsset = "MSFT"; service.rotationEnabled = true
       // A failed production search must call back with an explicit error.
       // Replace only the transport, retaining the actual provider and scheduler.
+      service.addMarket("TSLA")
       var yahooClient = service.provider("yahoo").client
+      yahooClient.cancel(function() { return true; })
+      yahooClient.scheduler.stop()
       yahooClient.scheduler = Queue.create(function(request, callback) {
-        return yahooClient.start({ url: root.baseUrl + "/fail", maxBytes: 131072 }, callback)
+        var endpoint = request.kind === "history" ? request.httpRange === "1d" ? "/history-empty" : "/history-session" : "/fail"
+        return yahooClient.start({ url: root.baseUrl + endpoint, maxBytes: 131072 }, callback)
       }, Date.now, 1200, 24)
+      service.fetchCandles("TSLA", "1D", true)
       service.searchYahooMarkets("apple", function(results, error) { root.check(results.length === 0 && error !== "", "search failure hidden as no results"); root.done() })
       http.enqueue({ key: "ok", url: root.baseUrl + "/ok" }, function(result) { root.check(result.data && result.data.value === 42, "native JSON response"); root.done() })
       http.enqueue({ key: "json", url: root.baseUrl + "/invalid" }, function(result) { root.check(!!result.error, "invalid JSON accepted"); root.done() })

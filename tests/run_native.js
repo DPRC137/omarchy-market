@@ -7,8 +7,14 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'market-native-test-'));
 const sockets = new Set();
+const emptyHistory = fs.readFileSync(path.join(__dirname, 'fixtures/yahoo_tsla_empty_window.json'), 'utf8');
+const sessionHistory = fs.readFileSync(path.join(__dirname, 'fixtures/yahoo_tsla_closed_session.json'), 'utf8');
 const server = http.createServer((request, response) => {
   if (request.url === '/hang') return;
+  if (request.url === '/history-empty' || request.url === '/history-session') {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(request.url === '/history-empty' ? emptyHistory : sessionHistory); return;
+  }
   if (request.url === '/fail') { response.writeHead(400); response.end('unavailable'); return; }
   response.writeHead(200, { 'Content-Type': 'application/json' });
   response.end(request.url === '/invalid' ? '{broken' : request.url === '/large' ? JSON.stringify({ value: 'x'.repeat(100) }) : '{"value":42}');

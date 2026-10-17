@@ -11,7 +11,8 @@ There is no browser UI, external backend, framework replacement or npm package.
   × supported providers), one-second UI freshness revision, persisted settings,
   undo, pinned asset and optional rotation, visible history lifecycle.
 - `models/History.js`: provider request specifications, calendar range/interval
-  separation, generation and identity validation, candle filtering, bounded
+  separation, generation and identity validation, provider-defined equity day sessions, one
+  bounded empty-session recovery, candle filtering, bounded
   expiring cache, loading/ready/stale/unavailable states.
 - `models/RequestQueue.js`: shared production HTTP scheduler: one active request
   per provider, at most 24 waiting jobs, key deduplication, priority, cancellation,

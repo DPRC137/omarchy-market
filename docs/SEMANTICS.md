@@ -53,19 +53,28 @@ trading periods. No local holiday or exchange-hours guesses are used.
 
 ## Chart ranges and cache
 
-Labels are calendar ranges ending at request time, independent of asset:
+Longer labels are calendar ranges ending at request time. The equity 1D view
+shows the latest available regular trading session, including while closed;
+crypto 1D remains a continuous 24-hour window:
 
 | Range | Calendar span | Binance / Hyperliquid interval | Yahoo interval |
 | --- | --- | --- | --- |
-| 1D | 24 hours | 5 minutes | 5 minutes |
+| 1D | Crypto: 24 hours; equities: latest regular session | 5 minutes | 5 minutes |
 | 1W | 7 days | 1 hour | 30 minutes |
 | 1M | 30 days | 4 hours | 1 hour |
 | 1Y | 365 days | 1 day | 1 day |
 
 The actual first/last candle times, local timezone, interval and source appear
-below the chart. Equity candles exclude extended hours. An equity range during
-closure may contain fewer than two points and explicitly show unavailable;
-no prices are manufactured to fill weekends or gaps. Chart colour follows
+below the chart. Equity candles exclude extended hours. Yahoo 1D uses `range=1d`
+and provider-supplied session boundaries, so a wall-clock cutoff cannot discard
+Friday's candles on a weekend. The session date is labelled explicitly. If Yahoo
+returns an empty success, one `range=5d` recovery selects only the latest session
+with actual candles; it does not display five days under a one-day label. Session
+boundaries (including half days) come from Yahoo, without hardcoded exchange
+hours or holiday guesses. A first-session candle renders as one neutral point;
+no prices are manufactured to fill weekends or gaps. Genuinely empty data retains
+stale cache when available, otherwise displays an explicit provider-data error
+without reserving a blank chart. Chart colour follows
 first-to-last movement in the selected range, independently of headline change.
 
 Cache entries include source, currency, interval and fetch time. They expire

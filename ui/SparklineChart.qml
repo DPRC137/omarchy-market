@@ -12,7 +12,7 @@ Item {
   property color positiveColor: "#26a69a"
   property color negativeColor: "#ef5350"
 
-  readonly property color strokeColor: isPositive ? positiveColor : negativeColor
+  readonly property color strokeColor: numericPoints.length < 2 ? Util.alpha(Color.foreground, 0.75) : isPositive ? positiveColor : negativeColor
   readonly property var numericPoints: {
     var arr = []
     if (!points || points.length === 0) return []
@@ -51,7 +51,7 @@ Item {
     return max === -Infinity ? 0 : max
   }
 
-  readonly property bool hasData: numericPoints.length >= 2 && points && points.length >= 2
+  readonly property bool hasData: numericPoints.length >= 1 && points && points.length >= 1
   opacity: hasData ? 1.0 : 0.4
   Behavior on opacity { NumberAnimation { duration: 150 } }
 
@@ -98,7 +98,7 @@ Item {
       var drawH = height - padTop - padBottom
 
       var pts = root.numericPoints
-      if (!root.hasData || !pts || pts.length < 2) {
+      if (!root.hasData || !pts || pts.length === 0) {
         return
       }
 
@@ -109,13 +109,22 @@ Item {
 
       var coords = []
       for (var i = 0; i < pts.length; i++) {
-        var x = padLeft + (i / (pts.length - 1)) * drawW
-        var normY = (pts[i] - min) / range
+        var x = padLeft + (pts.length === 1 ? 0.5 : i / (pts.length - 1)) * drawW
+        var normY = max === min ? 0.5 : (pts[i] - min) / range
         var y = padTop + (1.0 - normY) * drawH
         coords.push({ x: x, y: y })
       }
 
       var strokeCol = root.strokeColor
+      if (pts.length === 1) {
+        // A newly opened session can have exactly one real candle. Show the
+        // observation without duplicating it to manufacture a line.
+        ctx.beginPath()
+        ctx.arc(coords[0].x, coords[0].y, Style.space(4), 0, Math.PI * 2)
+        ctx.fillStyle = strokeCol
+        ctx.fill()
+        return
+      }
       var fillBase = Qt.rgba(strokeCol.r, strokeCol.g, strokeCol.b, 0.25)
       var fillZero = Qt.rgba(strokeCol.r, strokeCol.g, strokeCol.b, 0.0)
 

@@ -157,7 +157,7 @@ Panel {
             Text {
               width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
               text: MarketModel.providerDisplayName(root.activeQuote.provider) + " · " + (root.activeQuote.currency || "Currency pending") + " · " + root.activeQuote.priceType + "\n" + root.activeQuote.symbol + " · " + root.activeQuote.freshness + " · Quote " + MarketModel.formatAge(root.activeQuote.providerTimestamp, root.marketService ? root.marketService.now : Date.now()) + "\nConnection: " + (root.marketService && root.revision >= 0 ? root.marketService.getProviderStatus(root.activeQuote.provider) : "DISCONNECTED") + " · Received " + MarketModel.formatAge(root.activeQuote.receivedTimestamp, root.marketService ? root.marketService.now : Date.now()) + (root.marketService && root.marketService.getProviderError(root.activeQuote.provider) ? "\n" + root.marketService.getProviderError(root.activeQuote.provider) : "")
-              font.family: Style.font.family; font.pixelSize: Style.font.caption; color: Color.muted
+              font.family: Style.font.family; font.pixelSize: Style.font.caption; color: Util.alpha(Color.foreground, 0.75)
             }
             Text {
               width: parent.width; wrapMode: Text.Wrap
@@ -182,6 +182,8 @@ Panel {
               }
             }
             SparklineChart {
+              objectName: "market-chart"
+              visible: root.activeCandles.length > 0
               width: parent.width; height: Style.space(140)
               points: root.activeCandles
               currency: root.chartEntry ? root.chartEntry.currency : root.activeQuote.currency || ""
@@ -189,8 +191,9 @@ Panel {
             }
             Text {
               width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
-              text: (root.chartState === "loading" ? "Loading history…" : root.chartState === "unavailable" ? "History unavailable · " + root.chartError : root.chartState === "stale" ? "Stale cached history · " + (root.chartError || "Refresh to update") : "History updated " + MarketModel.formatAge(root.chartEntry ? root.chartEntry.savedAt : 0, root.marketService ? root.marketService.now : Date.now())) + (root.activeCandles.length ? "\n" + new Date(root.activeCandles[0].time).toLocaleString() + " – " + new Date(root.activeCandles[root.activeCandles.length - 1].time).toLocaleString() : "") + "\n" + MarketModel.providerDisplayName(MarketModel.selectedProvider(root.selectedAsset)) + " · Trade candles · " + (root.chartEntry ? root.chartEntry.interval : "")
-              font.pixelSize: Style.font.caption; color: Color.muted
+              objectName: "history-status"
+              text: (root.chartState === "loading" ? "Loading history…" : root.chartState === "unavailable" ? "History unavailable · " + root.chartError : root.chartState === "stale" ? "Stale cached history · " + (root.chartError || "Refresh to update") : (root.activeCandles.length === 1 ? "1 candle available; waiting for more · " : "History updated ") + MarketModel.formatAge(root.chartEntry ? root.chartEntry.savedAt : 0, root.marketService ? root.marketService.now : Date.now())) + (root.chartEntry && root.chartEntry.windowLabel ? "\n" + root.chartEntry.windowLabel + (root.chartEntry.sessionDate ? " · " + root.chartEntry.sessionDate : "") : "") + (root.activeCandles.length ? "\n" + new Date(root.activeCandles[0].time).toLocaleString() + " – " + new Date(root.activeCandles[root.activeCandles.length - 1].time).toLocaleString() : "") + "\n" + MarketModel.providerDisplayName(MarketModel.selectedProvider(root.selectedAsset)) + " · Trade candles · " + (root.chartEntry ? root.chartEntry.interval : "")
+              font.pixelSize: Style.font.caption; color: root.chartState === "unavailable" || root.chartState === "stale" ? Color.foreground : Util.alpha(Color.foreground, 0.75)
             }
             MarketAction { text: "Retry history"; visible: root.chartState === "stale" || root.chartState === "unavailable"; onClicked: if (root.marketService) root.marketService.fetchCandles(root.selectedAsset, root.selectedTimeframe, true) }
             MarketAction { text: root.comparisonOpen ? "▾ Exchange comparison" : "▸ Exchange comparison"; onClicked: root.comparisonOpen = !root.comparisonOpen }
