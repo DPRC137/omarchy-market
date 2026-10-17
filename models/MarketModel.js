@@ -275,7 +275,7 @@ var INSTRUMENT_CATALOG = [
     asset: "HYPE",
     name: "Hyperliquid",
     assetClass: "crypto",
-    instrument: "HYPE_USD_PERP",
+    instrument: "HYPE_USDC_PERP",
     precision: 3,
     aliases: ["hype", "hyperliquid"],
     providers: { hyperliquid: "HYPE" }
@@ -1008,7 +1008,8 @@ function createEmptyQuote(asset, provider) {
   var isStock = (cat.assetClass === "stock" || (cat.instrument && cat.instrument.indexOf("STOCK") !== -1));
   var isPerp = (!isStock && (asset === "HYPE" || prov === "hyperliquid" || (cat.instrument && cat.instrument.indexOf("PERP") !== -1)));
 
-  var inst = isStock ? (asset + "_" + (cat.currency || "UNKNOWN") + "_STOCK") : (isPerp ? (asset + "_USD_PERP") : (asset + (prov === "binance" ? "_USDT_SPOT" : "_USD_SPOT")));
+  var currency = isStock ? (cat.currency || null) : isPerp ? (asset === "HYPE" ? "USDC" : "USDT") : prov === "binance" ? "USDT" : "USD";
+  var inst = isStock ? (asset + "_" + (cat.currency || "UNKNOWN") + "_STOCK") : (isPerp ? (asset + "_" + currency + "_PERP") : (asset + (prov === "binance" ? "_USDT_SPOT" : "_USD_SPOT")));
   var pType = isStock ? INSTRUMENT_TYPES.STOCK_LAST : (isPerp ? INSTRUMENT_TYPES.PERP_MARK : INSTRUMENT_TYPES.SPOT_LAST);
 
   return {
@@ -1017,10 +1018,10 @@ function createEmptyQuote(asset, provider) {
     priceType: pType,
     name: cat.name,
     icon: "",
-    symbol: isStock ? asset : (asset + (prov === "binance" ? "/USDT" : "/USD")),
+    symbol: isStock ? asset : (asset + "/" + currency),
     provider: prov,
-    currency: isStock ? (cat.currency || null) : prov === "binance" ? "USDT" : "USD",
-    volumeUnit: isStock ? "shares" : prov === "binance" ? "USDT" : "USD",
+    currency: currency,
+    volumeUnit: isStock ? "shares" : currency,
     exchange: providerDisplayName(prov),
     price: null,
     change24h: null,
@@ -1215,17 +1216,21 @@ function normalizeHyperliquidMeta(data, targetAssets, now) {
       change24h = ((price - prevDay) / prevDay) * 100;
     }
 
+    // Contract denomination differs from collateral. HYPE is USDC-priced;
+    // other supported crypto contracts use USDT with USDC collateral.
+    var currency = name === "HYPE" ? "USDC" : "USDT";
     var volume24h = optionalNumber(ctx.dayNtlVlm);
 
     results.push({
       asset: name,
-      instrument: name + "_USD_PERP",
-      currency: "USD",
-      volumeUnit: "USD",
+      instrument: name + "_" + currency + "_PERP",
+      currency: currency,
+      collateralCurrency: "USDC",
+      volumeUnit: currency + " notional",
       priceType: INSTRUMENT_TYPES.PERP_MARK,
       name: cat ? cat.name : name,
       icon: "",
-      symbol: name + "/USD",
+      symbol: name + "/" + currency,
       provider: "hyperliquid",
       exchange: "Hyperliquid",
       price: isNaN(price) ? 0 : price,

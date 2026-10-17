@@ -1,3 +1,9 @@
+> Historical measurements below predate the reliability changes. They are not
+> a benchmark of this branch. Current bounds are 20 watched instruments, two
+> crypto bridges at most (zero for stock-only lists), 24 queued HTTP jobs per
+> provider, and 32 cached history datasets. See ARCHITECTURE.md. Long-duration
+> resource measurements have not been repeated for this change.
+
 # Omarchy Market Performance, Reliability & Resource Audit
 
 ## Architecture Overview

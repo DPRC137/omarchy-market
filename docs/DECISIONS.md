@@ -26,3 +26,16 @@
 - **Context**: The plugin must integrate smoothly into Omarchy without altering system files or packaged source.
 - **Decision**: Implement the plugin entirely inside `~/.config/omarchy/plugins/io.github.dpr.omarchy-market` conforming to Quattro's `manifest.json` schemaVersion 1 contract (`kinds: ["service", "bar-widget"]`).
 - **Consequences**: Plug-and-play installation, zero core modifications, clean hot-reload support via `inotifywait`.
+
+
+### ADR 005: Explicit sources and bounded native request lifecycle
+
+Supersedes the reference-price and browser-XHR assumptions in ADRs 001–003.
+Binance USDT spot, Yahoo metadata-currency equities, and HYPE USDC perpetual mark
+are separate selected sources. No USD/USDT averaging or Spot-to-Perp fallback.
+Hyperliquid uses context HTTP polling rather than an allMids child process, so
+mark prices and rolling metrics remain coherent. Binance/Coinbase bridges remain
+native Node children. All HTTP paths use a shared production scheduler per
+provider and explicit Qt deadlines. History is visible-only with generation
+validation and an expiring bounded cache. See ARCHITECTURE.md and SEMANTICS.md
+for current contracts and provider documentation.

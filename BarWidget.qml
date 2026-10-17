@@ -12,7 +12,7 @@ BarWidget {
   readonly property var watchlist: (marketService && marketService.watchlist) ? marketService.watchlist : ["BTC", "ETH", "SOL", "HYPE"]
 
   property int currentAssetIndex: 0
-  readonly property string currentAsset: (watchlist && watchlist.length > 0) ? (watchlist[currentAssetIndex % watchlist.length] || "BTC") : "BTC"
+  readonly property string currentAsset: (watchlist && watchlist.length > 0) ? (marketService && !marketService.rotationEnabled && watchlist.indexOf(marketService.pinnedAsset) >= 0 ? marketService.pinnedAsset : watchlist[currentAssetIndex % watchlist.length] || "BTC") : "BTC"
   readonly property var currentQuote: (marketService && updateRevision >= 0) ? marketService.getQuote(currentAsset, "aggregate") : MarketModel.createEmptyQuote(currentAsset, "aggregate")
 
   // Default to clean cycling single-asset display so it never collides with center clock
@@ -26,7 +26,7 @@ BarWidget {
     var q = currentQuote
     if (q && q.price > 0) {
       var arrow = q.change24h >= 0 ? "▲" : "▼"
-      return currentAsset + " " + MarketModel.formatCompactPrice(q.price) + " " + arrow + Math.abs(q.change24h).toFixed(1) + "%"
+      return currentAsset + " " + MarketModel.formatCompactPrice(q.price, q.currency) + " " + arrow + (q.change24h === null ? "—" : Math.abs(q.change24h).toFixed(1) + "%") + (q.freshness === "STALE" ? " · stale" : "")
     }
     return currentAsset + " ..."
   }
@@ -42,7 +42,7 @@ BarWidget {
       var q = marketService.getQuote(sym, "aggregate")
       if (q && q.price > 0) {
         var arrow = q.change24h >= 0 ? "▲" : "▼"
-        parts.push(sym + " " + MarketModel.formatCompactPrice(q.price) + " " + arrow + Math.abs(q.change24h).toFixed(1) + "%")
+        parts.push(sym + " " + MarketModel.formatCompactPrice(q.price, q.currency) + " " + arrow + (q.change24h === null ? "—" : Math.abs(q.change24h).toFixed(1) + "%") + (q.freshness === "STALE" ? " · stale" : ""))
       }
     }
     return parts.join(" · ")
@@ -96,7 +96,7 @@ BarWidget {
   Timer {
     id: cycleTimer
     interval: root.tickerSpeedMs
-    running: !buttonHover.hovered && root.watchlist.length > 1
+    running: root.marketService && root.marketService.rotationEnabled && !root.opened && !buttonHover.hovered && root.watchlist.length > 1
     repeat: true
     onTriggered: {
       root.currentAssetIndex = (root.currentAssetIndex + 1) % root.watchlist.length
@@ -118,24 +118,27 @@ BarWidget {
     id: buttonHover
   }
 
+  clip: true
+
   WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.vertical ? (currentAsset + "\n" + MarketModel.formatCompactPrice(currentQuote.price)) : root.displayTickerText
+    text: root.vertical ? (root.currentAsset + "\n" + MarketModel.formatCompactPrice(root.currentQuote.price, root.currentQuote.currency)) : root.displayTickerText
     tooltipText: "Omarchy Market (Click to open terminal, Middle-click to refresh, Right-click to switch asset)"
 
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.MiddleButton) {
         root.refresh()
       } else if (mouseButton === Qt.RightButton) {
-        root.currentAssetIndex = (root.currentAssetIndex + 1) % root.watchlist.length
+        root.currentAssetIndex = (root.watchlist.indexOf(root.currentAsset) + 1) % root.watchlist.length
+        if (root.marketService) root.marketService.pinnedAsset = root.watchlist[root.currentAssetIndex]
       } else {
         root.togglePanel()
       }
     }
   }
 
-  implicitWidth: root.vertical ? barSize : Math.min(Style.space(160), button.implicitWidth + Style.space(8))
+  implicitWidth: root.vertical ? barSize : Style.space(220)
   implicitHeight: root.vertical ? button.implicitHeight : barSize
 }

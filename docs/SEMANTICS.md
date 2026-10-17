@@ -6,7 +6,7 @@ history. The legacy `aggregate` API name remains an alias for that selection:
 | Asset | Source | Instrument | Quote unit | Headline price |
 | --- | --- | --- | --- | --- |
 | Crypto except HYPE | Binance | `ASSETUSDT` Spot | USDT | Last trade |
-| HYPE | Hyperliquid | HYPE Perp | USD | Mark |
+| HYPE | Hyperliquid | HYPE Perp | USDC | Mark |
 | Equities / ETFs | Yahoo | Exact Yahoo symbol | Metadata currency, case preserved | Regular-session last |
 
 USD and USDT are distinct. There is no price averaging, currency conversion,
@@ -21,9 +21,13 @@ Missing or unrecognized currency makes the quote unavailable. Dynamic symbols
 are limited to 24 letters/digits/dots/hyphens. Existing international entries
 previously labelled USD migrate with currency unknown until verified.
 
+Hyperliquid's [contract specifications](https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications)
+identify HYPE as USDC-denominated; the other supported crypto perpetuals are
+USDT-denominated with USDC collateral. These are not USD conversions.
+
 Missing prices and metrics are null and displayed as `—`. Zero is meaningful
 for volume and percentage change. Volume is Binance quote turnover in USDT,
-Coinbase base volume in the asset, Hyperliquid notional in USD, or equity shares.
+Coinbase base volume in the asset, Hyperliquid notional in the contract denomination, or equity shares.
 Unavailable Hyperliquid high/low are never inferred from the current price.
 
 Crypto changes/high/low/volume cover rolling 24 hours. Equity metrics describe
