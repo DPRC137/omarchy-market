@@ -41,16 +41,34 @@ ShellRoot {
   Timer {
     interval: 500; running: true
     onTriggered: {
-      service.persist(Model.deserializeWatchlist('["AAPL","MSFT"]'))
+      service.persist(Model.deserializeWatchlist('["BTC","MSFT"]'))
+      service.pinnedAsset = "BTC"
+      service.handleProviderQuote("binance", "BTC", Model.normalizeBinanceTicker({ s: "BTCUSDT", c: "81631.77", P: "-0.04" }, Date.now()))
       panel.open()
     }
   }
-  Timer { interval: 1000; running: true; onTriggered: { root.click("watch-AAPL"); root.check(panel.view === "detail", "watchlist row did not open detail") } }
+  Timer {
+    interval: 1000; running: true
+    onTriggered: {
+      root.click("watch-BTC")
+      root.check(panel.view === "detail", "watchlist row did not open detail")
+      var ticker = root.find(panel.contentItem, "detail-ticker")
+      var price = root.find(panel.contentItem, "detail-price")
+      var currency = root.find(panel.contentItem, "detail-currency")
+      root.check(ticker.text === "BTC" && ticker.font.pixelSize > currency.font.pixelSize, "ticker is subordinate to currency")
+      root.check(currency.text === "USDT" && price.text.indexOf("USDT") < 0 && price.text.indexOf("$") < 0, "headline lost or misstated its quote currency")
+    }
+  }
   Timer { interval: 1300; running: true; onTriggered: { events.keyClick(Qt.Key_Escape, 0, 0); root.check(panel.view === "watchlist", "Escape did not go Back"); root.click("Manage") } }
   Timer {
     interval: 1600; running: true
     onTriggered: {
       var search = root.find(panel.contentItem, "market-search")
+      var tickerChoice = root.find(panel.contentItem, "bar-ticker")
+      tickerChoice.open()
+      events.keyClick(Qt.Key_Down, 0, 0)
+      events.keyClick(Qt.Key_Return, 0, 0)
+      root.check(service.pinnedAsset === "MSFT", "Manage bar ticker selection failed")
       search.forceActiveFocus()
       // Actual key events, so Enter must invoke the UI's production handler.
       events.keyClickChar("a", 0, 0); events.keyClickChar("m", 0, 0); events.keyClickChar("d", 0, 0)

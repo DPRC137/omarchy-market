@@ -140,19 +140,28 @@ Panel {
           Column {
             visible: root.view === "detail"
             width: parent.width; spacing: Style.space(9)
-            Flow {
-              width: parent.width
-              spacing: Style.space(8)
-              Text { width: Math.min(implicitWidth, parent.width); elide: Text.ElideRight; text: root.selectedAsset; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true; color: Color.foreground }
-              MarketAction {
-                text: root.marketService && root.marketService.pinnedAsset === root.selectedAsset ? "Pinned" : "Pin to bar"
-                onClicked: if (root.marketService) root.marketService.pinnedAsset = root.selectedAsset
-              }
-            }
             Text {
               width: parent.width; elide: Text.ElideRight
-              text: MarketModel.formatPrice(root.activeQuote.price, undefined, root.activeQuote.currency)
-              font.family: Style.font.family; font.pixelSize: Style.font.body * 2; font.bold: true; color: Color.foreground
+              objectName: "detail-ticker"
+              text: root.selectedAsset
+              font.family: Style.font.family; font.pixelSize: Style.font.body * 1.6; font.bold: true; color: Color.foreground
+            }
+            Flow {
+              width: parent.width; spacing: Style.space(8)
+              Text {
+                id: headlinePrice
+                objectName: "detail-price"
+                width: Math.min(implicitWidth, parent.width); elide: Text.ElideRight
+                text: MarketModel.formatPrice(root.activeQuote.price, undefined, root.activeQuote.currency, !root.isStock)
+                Accessible.name: MarketModel.formatPrice(root.activeQuote.price, undefined, root.activeQuote.currency)
+                font.family: Style.font.family; font.pixelSize: Style.font.body * 2; font.bold: true; color: Color.foreground
+              }
+              Text {
+                objectName: "detail-currency"
+                height: headlinePrice.height; verticalAlignment: Text.AlignVCenter
+                text: root.activeQuote.currency || ""
+                font.family: Style.font.family; font.pixelSize: Style.font.caption; color: Util.alpha(Color.foreground, 0.75)
+              }
             }
             Text {
               width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
@@ -214,6 +223,15 @@ Panel {
           }
           Column {
             width: parent.width; spacing: Style.space(8); visible: root.view === "manage"
+            Dropdown {
+              objectName: "bar-ticker"
+              width: parent.width
+              label: "Bar ticker when rotation is off"
+              options: root.assets
+              value: root.marketService ? root.marketService.pinnedAsset : ""
+              onChanged: function(value) { if (root.marketService) root.marketService.pinnedAsset = value }
+            }
+            MarketAction { text: root.marketService && root.marketService.rotationEnabled ? "Rotation: on" : "Rotation: off"; onClicked: if (root.marketService) root.marketService.rotationEnabled = !root.marketService.rotationEnabled }
             Text { text: "Watchlist · " + root.assets.length + " / 20"; font.pixelSize: Style.font.bodySmall; font.bold: true; color: Color.foreground }
             BorderSurface {
               width: parent.width; height: Style.space(36)
@@ -266,7 +284,6 @@ Panel {
                 MarketAction { width: Style.space(35); text: "×"; Accessible.name: "Remove " + parent.modelData; onClicked: root.remove(parent.modelData) }
               }
             }
-            MarketAction { text: root.marketService && root.marketService.rotationEnabled ? "Rotation: on" : "Rotation: off"; onClicked: if (root.marketService) root.marketService.rotationEnabled = !root.marketService.rotationEnabled }
           }
         }
       }

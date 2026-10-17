@@ -40,6 +40,8 @@ assert.equal(M.formatVolume(0, 'shares'), '0 shares');
 assert.equal(M.formatPrice(123, 2, 'INR'), 'INR 123.00');
 assert.equal(M.formatPrice(123, 2, 'GBp'), 'GBp 123.00');
 assert.equal(M.formatPrice(123, 2, 'USDT'), 'USDT 123.00');
+assert.equal(M.formatPrice(123, 2, 'USDT', true), '123.00'); // Separate currency label in the detail headline.
+assert.equal(M.formatPrice(null, 2, 'USDT', true), '—');
 assert.equal(M.formatCompactPrice(81554.97, 'USDT', true), '81.6K');
 assert.equal(M.formatCompactPrice(79.09, 'USDC', true), '79.1');
 assert.equal(M.formatCompactPrice(250, 'USD'), '$250.0');

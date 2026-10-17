@@ -40,7 +40,7 @@ processes or changing the user's enabled plugins. The historical
   empty-success recovery without a live-provider dependency.
 - `node tests/run_ui.js`: requires Wayland, QtTest and installed Quattro imports.
   It renders the real popup in a temporary host and drives Qt pointer/keyboard
-  events: row -> detail, Back/Escape, search typing/arrows/Enter, Tab, Undo and
+  events: row -> detail, Back/Escape, search typing/arrows/Enter, Tab, Undo, the Manage bar-ticker selector and
   close cleanup. Enlarged font/spacing is exercised. `node tests/run_ui.js ticker`
   also checks the actual bar widget: content sizing, hover guard/cleanup, direct
   displayed-asset chart opening, currency metadata and optional rotation. It never replaces or
@@ -77,5 +77,6 @@ Screenshots show live data at capture time, not reproducible price expectations.
 Native captures: [original detail](screenshots/before-detail.png),
 [updated watchlist](screenshots/after-watchlist.png),
 [updated detail](screenshots/after-detail.png),
+[final detail typography](screenshots/after-detail-header.png),
 [closed-market equity session](screenshots/after-equity-session.png). These are the actual popup's
 content rendered on Wayland with Quattro imports, excluding surrounding desktop.

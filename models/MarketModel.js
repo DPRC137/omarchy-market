@@ -1412,7 +1412,7 @@ function formatAge(timestamp, now) {
 }
 
 // Strict and deterministic price formatting
-function formatPrice(value, precision, currency) {
+function formatPrice(value, precision, currency, omitCurrency) {
   var num = optionalNumber(value);
   if (num === null || num <= 0) return "—";
   var p;
@@ -1430,7 +1430,7 @@ function formatPrice(value, precision, currency) {
   var fixed = num.toFixed(p);
   var parts = fixed.split(".");
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return (currency === "USD" || currency === undefined ? "$" : (currency || "?") + " ") + parts.join(".");
+  return (omitCurrency ? "" : currency === "USD" || currency === undefined ? "$" : (currency || "?") + " ") + parts.join(".");
 }
 
 function formatCompactPrice(value, currency, omitCurrency) {

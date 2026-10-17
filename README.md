@@ -59,8 +59,9 @@ Remove with `omarchy plugin remove io.github.dpr.omarchy-market`.
 
 - Bar left-click: chart for the displayed instrument. Back opens the watchlist. Middle-click: refresh quotes and any visible
   history. Right-click: cycle and pin a bar instrument.
-- Detail **Pin to bar**: choose a stable asset. Rotation is off by default and
-  can be enabled in Manage. The bar fits its text, and hovering keeps neighboring indicator reveals from
+- **Manage → Bar ticker**: choose a stable asset. Rotation is off by default and
+  can be enabled in Manage. The chart emphasizes the ticker and price, with a smaller
+  currency label. The bar fits its text, and hovering keeps neighboring indicator reveals from
   shifting it. Crypto bar prices omit quote codes; tooltip and detail preserve them.
 - **Tab / Shift+Tab**: move between controls and rows. **Enter / Space** activates.
 - **Escape**: Back from detail/Manage, then close. **R** refreshes outside search;
