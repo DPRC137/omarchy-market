@@ -1,621 +1,75 @@
 import QtQuick
-import Quickshell
 import "../models/MarketModel.js" as MarketModel
 
 Item {
   id: root
-
   readonly property string providerId: "yahoo"
-  readonly property string providerName: "Yahoo Finance"
-  property string status: "DISCONNECTED" // DISCONNECTED, CONNECTING, CONNECTED, STALE, FAILED
-  property int lastUpdateTimestamp: 0
-  property var quotes: ({})
-  property var candles: ({})
-  property bool active: true
+  property string status: "DISCONNECTED"
+  property string lastError: ""
   property var targetAssets: []
-
-  // Internal rate-limiting and scheduler state
-  property var queue: []
-  property var inFlightTask: null
-  property bool inFlight: false
-  property int backoffAttempts: 0
-  property bool isBackingOff: false
-  property string currentMarketState: "regular" // "regular", "preMarket", "postMarket", "closed"
-
-  readonly property string userAgent: "Mozilla/5.0 (X11; Linux x86_64) OmarchyMarket/1.0"
-  readonly property int requestTimeoutMs: 6000
-  readonly property int minRequestSpacingMs: 1200
-  readonly property int normalPollIntervalMs: 60000
-  readonly property int closedPollIntervalMs: 300000
-  readonly property int maxSearchResponseBytes: 131072 // 128 KB ceiling for search responses
-  readonly property int maxDataResponseBytes: 1048576   // 1 MB ceiling for chart quote/candle responses
-
+  property bool active: false
+  property var quotes: ({})
+  property alias client: http
+  property int searchGeneration: 0
   signal quoteReceived(string asset, var quote)
-  signal candlesReceived(string asset, string timeframe, var candlesList)
 
-  function updateSubscriptions(assetsList) {
-    if (!assetsList || !Array.isArray(assetsList)) return
-    var filtered = []
-    for (var i = 0; i < assetsList.length; i++) {
-      var sym = String(assetsList[i] || "").trim().toUpperCase()
-      var cat = MarketModel.getCatalogItem(sym)
-      if (cat && cat.assetClass === "stock") {
-        filtered.push(sym)
-      }
-    }
-    root.targetAssets = filtered
-    if (root.active && filtered.length > 0) {
-      fetchSnapshot()
-    }
+  HttpClient { id: http; spacing: 1200 }
+  function updateSubscriptions(assets) {
+    var next = assets.filter(function(a) { var c = MarketModel.getCatalogItem(a); return c && c.assetClass === "stock"; })
+    if (JSON.stringify(next) === JSON.stringify(targetAssets)) return
+    var retained = {}
+    next.forEach(function(asset) { if (root.quotes[asset]) retained[asset] = root.quotes[asset]; })
+    quotes = retained
+    targetAssets = next
+    active = next.length > 0
+    http.cancel(function(r) { return r.kind === "quote" && next.indexOf(r.asset) < 0; })
+    if (active) fetchSnapshot()
+    else status = "DISCONNECTED"
   }
-
-  function connect() {
-    active = true
-    status = "CONNECTING"
-    if (root.targetAssets.length > 0) {
-      fetchSnapshot()
-    }
-  }
-
-  function disconnect() {
-    active = false
-    status = "DISCONNECTED"
-    queue = []
-    inFlight = false
-    inFlightTask = null
-    isBackingOff = false
-    backoffTimer.stop()
-    requestSpacingTimer.stop()
-    pollTimer.stop()
-  }
-
-  function refresh() {
-    fetchSnapshot()
-  }
-
-  property int searchRequestIdCounter: 0
-  property int activeSearchRequestId: 0
-
-  function searchSymbols(query, callback) {
-    if (!query || !query.trim()) {
-      if (callback) callback([])
-      return
-    }
-    var q = query.trim()
-    root.searchRequestIdCounter++
-    var reqId = root.searchRequestIdCounter
-    root.activeSearchRequestId = reqId
-
-    var url = "https://query1.finance.yahoo.com/v1/finance/search?q=" + encodeURIComponent(q) + "&quotesCount=8&newsCount=0"
-    try {
-      var xhr = new XMLHttpRequest()
-      var finalized = false
-      function finalize(results) {
-        if (finalized) return
-        finalized = true
-        if (reqId === root.activeSearchRequestId && callback) {
-          callback(results || [])
-        }
-      }
-
-      xhr.timeout = 5000
-      xhr.onreadystatechange = function() {
-        if (finalized) return
-
-        if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
-          try {
-            var clHeader = xhr.getResponseHeader("Content-Length")
-            if (clHeader) {
-              var cl = parseInt(clHeader, 10)
-              if (!isNaN(cl) && cl > root.maxSearchResponseBytes) {
-                console.warn("YahooProvider: search Content-Length exceeds ceiling (" + cl + " > " + root.maxSearchResponseBytes + ")")
-                finalize([])
-                xhr.abort()
-                return
-              }
-            }
-          } catch (eH) {}
-        }
-
-        if (xhr.readyState === XMLHttpRequest.LOADING) {
-          try {
-            var loadLen = xhr.responseText ? xhr.responseText.length : 0
-            if (loadLen > root.maxSearchResponseBytes) {
-              console.warn("YahooProvider: search response text length exceeds ceiling during LOADING (" + loadLen + " > " + root.maxSearchResponseBytes + ")")
-              finalize([])
-              xhr.abort()
-              return
-            }
-          } catch (eL) {}
-        }
-
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          if (finalized) return
-          // Discard if a newer search request was initiated (out-of-order protection)
-          if (reqId !== root.activeSearchRequestId) {
-            finalize([])
-            return
-          }
-          if (xhr.status === 200) {
-            var text = xhr.responseText || ""
-            if (text.length > root.maxSearchResponseBytes) {
-              console.warn("YahooProvider: search responseText exceeds ceiling at DONE (" + text.length + " > " + root.maxSearchResponseBytes + ")")
-              finalize([])
-              return
-            }
-            try {
-              var data = JSON.parse(text)
-              var rawQuotes = (data && Array.isArray(data.quotes)) ? data.quotes : []
-              var filtered = []
-              var symbolRegex = /^[A-Z0-9.\-]{1,10}$/
-              for (var i = 0; i < rawQuotes.length; i++) {
-                if (filtered.length >= 8) break
-                var item = rawQuotes[i]
-                if (!item || typeof item !== "object" || typeof item.symbol !== "string") continue
-                if (item.quoteType !== "EQUITY" && item.quoteType !== "ETF") continue
-                var sym = item.symbol.trim().toUpperCase()
-                if (!symbolRegex.test(sym)) continue
-
-                var displayName = sym
-                if (typeof item.shortname === "string" && item.shortname.trim()) {
-                  displayName = item.shortname.trim().slice(0, 100)
-                } else if (typeof item.longname === "string" && item.longname.trim()) {
-                  displayName = item.longname.trim().slice(0, 100)
-                }
-
-                var exch = "US"
-                if (typeof item.exchDisp === "string" && item.exchDisp.trim()) {
-                  exch = item.exchDisp.trim().slice(0, 30)
-                } else if (typeof item.exchange === "string" && item.exchange.trim()) {
-                  exch = item.exchange.trim().slice(0, 30)
-                }
-
-                filtered.push({
-                  asset: sym,
-                  name: displayName,
-                  assetClass: "stock",
-                  instrument: sym + "_USD_STOCK",
-                  exchange: exch,
-                  quoteType: item.quoteType,
-                  precision: 2,
-                  providers: { yahoo: sym }
-                })
-              }
-              finalize(filtered)
-            } catch (e) {
-              console.warn("YahooProvider: search parse error:", e)
-              finalize([])
-            }
-          } else {
-            finalize([])
-          }
-        }
-      }
-      xhr.onerror = function() { finalize([]) }
-      xhr.ontimeout = function() { finalize([]) }
-      xhr.open("GET", url)
-      xhr.setRequestHeader("User-Agent", root.userAgent)
-      xhr.send()
-    } catch (err) {
-      if (callback) callback([])
-    }
-  }
-
-  // Fetch an individual quote on demand (e.g. when selected in UI)
   function fetchQuote(asset) {
-    if (!asset || !root.active) return
-    var sym = String(asset).trim().toUpperCase()
-    var cat = MarketModel.getCatalogItem(sym)
-    if (!cat || cat.assetClass !== "stock") return
-    enqueueTask({
-      type: "quote",
-      asset: sym,
-      priority: 10
+    if (!active || targetAssets.indexOf(asset) < 0) return
+    http.enqueue({ key: "quote:" + asset, kind: "quote", asset: asset, priority: 10,
+      url: "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(asset) + "?interval=1m&range=1d&includePrePost=false"
+    }, function(result) {
+      if (result.cancelled || targetAssets.indexOf(asset) < 0) return
+      if (result.error) { status = "FAILED"; lastError = result.error; return }
+      var quote = MarketModel.normalizeYahooChart(result.data, Date.now())
+      if (!quote || quote.asset !== asset) { status = "FAILED"; lastError = "Unsupported currency, invalid instrument or unavailable quote"; return }
+      status = "CONNECTED"; lastError = ""
+      var next = Object.assign({}, quotes); next[asset] = quote; quotes = next
+      quoteReceived(asset, quote)
     })
-    processQueue()
   }
-
-  // Enqueue a full snapshot of quotes across subscribed stocks
-  function fetchSnapshot() {
-    if (!root.active || root.targetAssets.length === 0) return
-    for (var i = 0; i < root.targetAssets.length; i++) {
-      enqueueTask({
-        type: "quote",
-        asset: root.targetAssets[i],
-        priority: 10
-      })
-    }
-    processQueue()
-  }
-
-  // Enqueue an on-demand historical candle request for a stock
-  function fetchCandles(asset, timeframe) {
-    if (!asset) return
-    var sym = String(asset).trim().toUpperCase()
-    var cat = MarketModel.getCatalogItem(sym)
-    if (!cat || cat.assetClass !== "stock") return
-
-    var tf = timeframe || "1H"
-    enqueueTask({
-      type: "candle",
-      asset: sym,
-      timeframe: tf,
-      priority: 5
+  function fetchSnapshot() { targetAssets.forEach(fetchQuote) }
+  function searchSymbols(query, callback) {
+    var generation = ++searchGeneration
+    http.cancel(function(r) { return r.kind === "search"; })
+    if (!query.trim()) { callback([], ""); return }
+    http.enqueue({ key: "search:" + generation, kind: "search", priority: 80, maxBytes: 131072,
+      url: "https://query1.finance.yahoo.com/v1/finance/search?q=" + encodeURIComponent(query.trim()) + "&quotesCount=8&newsCount=0"
+    }, function(result) {
+      if (generation !== searchGeneration || result.cancelled) return
+      if (result.error) { callback([], result.error); return }
+      var rows = result.data && result.data.quotes
+      if (!Array.isArray(rows)) { callback([], "Invalid search response"); return }
+      var items = rows.filter(function(r) { return r && (r.quoteType === "EQUITY" || r.quoteType === "ETF"); }).map(function(r) {
+        // Search often omits currency. Keep it unknown until chart metadata
+        // resolves the units; unknown prices are never displayed as dollars.
+        return MarketModel.canonicalizeDynamicStock({ asset: r.symbol, name: r.shortname || r.longname, exchange: r.exchDisp || r.exchange, currency: r.currency });
+      }).filter(function(r) { return r !== null; }).slice(0, 8)
+      callback(items, "")
     })
-    processQueue()
   }
-
-  function enqueueTask(task) {
-    // Deduplication check against in-flight task
-    if (root.inFlightTask) {
-      if (task.type === "quote" && root.inFlightTask.type === "quote" && root.inFlightTask.asset === task.asset) {
-        return
-      }
-      if (task.type === "candle" && root.inFlightTask.type === "candle" && root.inFlightTask.asset === task.asset && root.inFlightTask.timeframe === task.timeframe) {
-        return
-      }
-    }
-
-    // Deduplication check against already queued tasks
-    for (var i = 0; i < root.queue.length; i++) {
-      var qItem = root.queue[i]
-      if (task.type === "quote" && qItem.type === "quote" && qItem.asset === task.asset) {
-        return
-      }
-      if (task.type === "candle" && qItem.type === "candle" && qItem.asset === task.asset && qItem.timeframe === task.timeframe) {
-        return
-      }
-    }
-
-    var nextQueue = root.queue.slice()
-    // Prioritized insertion: higher priority (quotes: 10) before lower priority (candles: 5)
-    var inserted = false
-    for (var j = 0; j < nextQueue.length; j++) {
-      if (task.priority > nextQueue[j].priority) {
-        nextQueue.splice(j, 0, task)
-        inserted = true
-        break
-      }
-    }
-    if (!inserted) {
-      nextQueue.push(task)
-    }
-    root.queue = nextQueue
-  }
-
-  function processQueue() {
-    // Invariant: Never allow more than one in-flight XMLHttpRequest
-    if (!root.active || root.inFlight || root.isBackingOff || requestSpacingTimer.running || root.queue.length === 0) {
-      return
-    }
-
-    var nextQueue = root.queue.slice()
-    var task = nextQueue.shift()
-    root.queue = nextQueue
-    root.inFlight = true
-    root.inFlightTask = task
-
-    if (task.type === "quote") {
-      executeQuoteRequest(task)
-    } else if (task.type === "candle") {
-      executeCandleRequest(task)
-    }
-  }
-
-  function executeQuoteRequest(task) {
-    var symbol = task.asset
-    var url = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(symbol) + "?interval=1m&range=2d&includePrePost=true"
-
-    try {
-      var xhr = new XMLHttpRequest()
-      xhr.timeout = root.requestTimeoutMs
-
-      var finalized = false
-      function finalizeFailure(reason) {
-        if (finalized) return
-        finalized = true
-        handleNetworkFailure(task, reason)
-      }
-
-      function finalizeBackoff(status) {
-        if (finalized) return
-        finalized = true
-        console.warn("YahooProvider: rate limit / server error HTTP " + status + " for " + task.asset + ", backing off")
-        triggerBackoff()
-      }
-
-      function finalizeSuccess(responseText) {
-        if (finalized) return
-        finalized = true
-        try {
-          var data = JSON.parse(responseText)
-          var quote = MarketModel.normalizeYahooChart(data, Date.now())
-          if (quote && quote.asset) {
-            root.status = "CONNECTED"
-            root.backoffAttempts = 0
-            root.lastUpdateTimestamp = Date.now()
-            root.currentMarketState = quote.marketState || "regular"
-
-            var nextQuotes = Object.assign({}, root.quotes)
-            nextQuotes[quote.asset] = quote
-            root.quotes = nextQuotes
-            root.quoteReceived(quote.asset, quote)
-          }
-        } catch (err) {
-          console.warn("YahooProvider: parse error for quote " + symbol + ":", err)
-        }
-        finishRequest()
-        scheduleNextRequest(root.minRequestSpacingMs)
-      }
-
-      xhr.onreadystatechange = function() {
-        if (finalized) return
-
-        if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
-          try {
-            var clHeader = xhr.getResponseHeader("Content-Length")
-            if (clHeader) {
-              var cl = parseInt(clHeader, 10)
-              if (!isNaN(cl) && cl > root.maxDataResponseBytes) {
-                console.warn("YahooProvider: Content-Length exceeds ceiling for quote " + symbol + " (" + cl + " > " + root.maxDataResponseBytes + ")")
-                finalizeFailure("response Content-Length exceeds byte ceiling")
-                xhr.abort()
-                return
-              }
-            }
-          } catch (eH) {}
-        }
-
-        if (xhr.readyState === XMLHttpRequest.LOADING) {
-          try {
-            var loadLen = xhr.responseText ? xhr.responseText.length : 0
-            if (loadLen > root.maxDataResponseBytes) {
-              console.warn("YahooProvider: quote response text length exceeds ceiling during LOADING (" + loadLen + " > " + root.maxDataResponseBytes + ")")
-              finalizeFailure("response stream exceeds byte ceiling")
-              xhr.abort()
-              return
-            }
-          } catch (eL) {}
-        }
-
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          if (finalized) return
-          var httpStatus = xhr.status
-          if (httpStatus === 200) {
-            var text = xhr.responseText || ""
-            if (text.length > root.maxDataResponseBytes) {
-              console.warn("YahooProvider: quote response text exceeded ceiling at DONE (" + text.length + " > " + root.maxDataResponseBytes + ")")
-              finalizeFailure("response exceeds byte ceiling")
-              return
-            }
-            finalizeSuccess(text)
-          } else if (httpStatus === 429 || httpStatus === 403 || httpStatus >= 500) {
-            finalizeBackoff(httpStatus)
-          } else {
-            finalizeFailure("HTTP " + httpStatus)
-          }
-        }
-      }
-
-      xhr.onerror = function() {
-        finalizeFailure("network error")
-      }
-      xhr.ontimeout = function() {
-        finalizeFailure("timeout")
-      }
-
-      xhr.open("GET", url)
-      xhr.setRequestHeader("User-Agent", root.userAgent)
-      xhr.send()
-    } catch (e) {
-      handleNetworkFailure(task, String(e))
-    }
-  }
-
-  function executeCandleRequest(task) {
-    var symbol = task.asset
-    var tf = task.timeframe || "1H"
-    var interval = "5m"
-    var range = "5d"
-
-    if (tf === "4H") {
-      interval = "30m"
-      range = "1mo"
-    } else if (tf === "1D") {
-      interval = "1d"
-      range = "6mo"
-    } else if (tf === "1W") {
-      interval = "1d"
-      range = "2y"
-    } else if (tf === "1M") {
-      interval = "1mo"
-      range = "10y"
-    }
-
-    var url = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(symbol) + "?interval=" + interval + "&range=" + range
-
-    try {
-      var xhr = new XMLHttpRequest()
-      xhr.timeout = root.requestTimeoutMs
-
-      var finalized = false
-      function finalizeFailure(reason) {
-        if (finalized) return
-        finalized = true
-        handleNetworkFailure(task, reason)
-      }
-
-      function finalizeBackoff(status) {
-        if (finalized) return
-        finalized = true
-        console.warn("YahooProvider: rate limit / server error HTTP " + status + " for " + task.asset + ", backing off")
-        triggerBackoff()
-      }
-
-      function finalizeSuccess(responseText) {
-        if (finalized) return
-        finalized = true
-        try {
-          var data = JSON.parse(responseText)
-          var list = MarketModel.normalizeYahooCandles(data)
-          if (Array.isArray(list)) {
-            var cMap = Object.assign({}, root.candles)
-            cMap[symbol + "_" + tf] = list
-            root.candles = cMap
-            root.candlesReceived(symbol, tf, list)
-          }
-        } catch (err) {
-          console.warn("YahooProvider: parse error for candles " + symbol + " (" + tf + "):", err)
-        }
-        finishRequest()
-        scheduleNextRequest(root.minRequestSpacingMs)
-      }
-
-      xhr.onreadystatechange = function() {
-        if (finalized) return
-
-        if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
-          try {
-            var clHeader = xhr.getResponseHeader("Content-Length")
-            if (clHeader) {
-              var cl = parseInt(clHeader, 10)
-              if (!isNaN(cl) && cl > root.maxDataResponseBytes) {
-                console.warn("YahooProvider: Content-Length exceeds ceiling for candles " + symbol + " (" + cl + " > " + root.maxDataResponseBytes + ")")
-                finalizeFailure("response Content-Length exceeds byte ceiling")
-                xhr.abort()
-                return
-              }
-            }
-          } catch (eH) {}
-        }
-
-        if (xhr.readyState === XMLHttpRequest.LOADING) {
-          try {
-            var loadLen = xhr.responseText ? xhr.responseText.length : 0
-            if (loadLen > root.maxDataResponseBytes) {
-              console.warn("YahooProvider: candle response text length exceeds ceiling during LOADING (" + loadLen + " > " + root.maxDataResponseBytes + ")")
-              finalizeFailure("response stream exceeds byte ceiling")
-              xhr.abort()
-              return
-            }
-          } catch (eL) {}
-        }
-
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          if (finalized) return
-          var httpStatus = xhr.status
-          if (httpStatus === 200) {
-            var text = xhr.responseText || ""
-            if (text.length > root.maxDataResponseBytes) {
-              console.warn("YahooProvider: candle response text exceeded ceiling at DONE (" + text.length + " > " + root.maxDataResponseBytes + ")")
-              finalizeFailure("response exceeds byte ceiling")
-              return
-            }
-            finalizeSuccess(text)
-          } else if (httpStatus === 429 || httpStatus === 403 || httpStatus >= 500) {
-            finalizeBackoff(httpStatus)
-          } else {
-            finalizeFailure("HTTP " + httpStatus)
-          }
-        }
-      }
-
-      xhr.onerror = function() {
-        finalizeFailure("network error")
-      }
-      xhr.ontimeout = function() {
-        finalizeFailure("timeout")
-      }
-
-      xhr.open("GET", url)
-      xhr.setRequestHeader("User-Agent", root.userAgent)
-      xhr.send()
-    } catch (e) {
-      handleNetworkFailure(task, String(e))
-    }
-  }
-
-  function handleNetworkFailure(task, reason) {
-    console.warn("YahooProvider: request failed for " + task.asset + " (" + reason + ")")
-    finishRequest()
-    scheduleNextRequest(root.minRequestSpacingMs)
-  }
-
-  function finishRequest() {
-    root.inFlight = false
-    root.inFlightTask = null
-  }
-
-  function scheduleNextRequest(delayMs) {
-    requestSpacingTimer.interval = Math.max(100, delayMs || root.minRequestSpacingMs)
-    requestSpacingTimer.restart()
-  }
-
-  function triggerBackoff() {
-    finishRequest()
-    root.isBackingOff = true
-    if (root.status === "CONNECTED") root.status = "STALE"
-
-    // Exponential backoff: 5s, 10s, 20s, 40s, max 60s + jitter
-    var baseDelay = Math.min(60000, Math.pow(2, Math.min(root.backoffAttempts, 4)) * 5000)
-    var jitter = Math.floor(Math.random() * 2000)
-    var totalDelay = baseDelay + jitter
-    root.backoffAttempts++
-
-    console.log("YahooProvider: backing off for " + (totalDelay / 1000).toFixed(1) + "s (attempt " + root.backoffAttempts + ")")
-    backoffTimer.interval = totalDelay
-    backoffTimer.restart()
-  }
-
   Timer {
-    id: requestSpacingTimer
-    repeat: false
-    onTriggered: {
-      root.processQueue()
-    }
-  }
-
-  Timer {
-    id: backoffTimer
-    repeat: false
-    onTriggered: {
-      root.isBackingOff = false
-      root.processQueue()
-    }
-  }
-
-  // Periodic polling timer
-  Timer {
-    id: pollTimer
-    interval: root.currentMarketState === "closed" ? root.closedPollIntervalMs : root.normalPollIntervalMs
-    running: root.active && root.targetAssets.length > 0
-    repeat: true
-    onTriggered: {
-      // Don't hammer Yahoo with 20 requests if the market is closed overnight
-      if (root.currentMarketState === "closed") {
-        // Run low-frequency single cycle or skip if recent data is retained
-        root.fetchSnapshot()
-      } else {
-        root.fetchSnapshot()
+    interval: {
+      for (var i = 0; i < root.targetAssets.length; i++) {
+        var q = root.quotes[root.targetAssets[i]]
+        if (!q || MarketModel.sessionAt(q.tradingPeriods, Date.now()) !== "closed") return 60000
       }
+      return 300000
     }
-  }
-
-  // Stale detection timer
-  Timer {
-    interval: 15000
     running: root.active
     repeat: true
-    onTriggered: {
-      if (root.status === "CONNECTED" && root.lastUpdateTimestamp > 0 && (Date.now() - root.lastUpdateTimestamp > 90000)) {
-        root.status = "STALE"
-      }
-    }
+    onTriggered: root.fetchSnapshot()
   }
-
-  Component.onCompleted: {
-    if (active) connect()
-  }
-
-  Component.onDestruction: disconnect()
 }

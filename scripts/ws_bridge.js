@@ -8,6 +8,11 @@
 
 const readline = require("readline");
 
+if (typeof WebSocket !== "function") {
+  console.error("Omarchy Market requires Node.js 22+ with native WebSocket enabled.");
+  process.exit(1);
+}
+
 const VALID_PROVIDERS = ["binance", "coinbase", "hyperliquid"];
 const rawProvider = (process.argv[2] || "binance").toLowerCase().trim();
 
@@ -17,7 +22,7 @@ if (!VALID_PROVIDERS.includes(rawProvider)) {
 }
 
 const provider = rawProvider;
-const rawSymbolsArg = process.argv[3] || "";
+const rawSymbolsArg = process.argv[3];
 let activeSymbols = parseSymbols(rawSymbolsArg);
 
 function sanitizeSymbols(symbols) {
@@ -29,7 +34,7 @@ function sanitizeSymbols(symbols) {
   for (const s of arr) {
     if (typeof s !== "string") continue;
     const clean = s.trim().toUpperCase();
-    if (!clean || seen.has(clean)) continue;
+    if (!/^[A-Z0-9]{1,12}$/.test(clean) || seen.has(clean)) continue;
     seen.add(clean);
     result.push(clean);
   }
@@ -37,11 +42,8 @@ function sanitizeSymbols(symbols) {
 }
 
 function parseSymbols(str) {
-  if (!str) {
-    return provider === "hyperliquid" ? ["BTC", "ETH", "SOL", "HYPE"] : ["BTC", "ETH", "SOL"];
-  }
-  const list = sanitizeSymbols(str);
-  return list.length > 0 ? list : (provider === "hyperliquid" ? ["BTC", "ETH", "SOL", "HYPE"] : ["BTC", "ETH", "SOL"]);
+  if (str === undefined) return provider === "hyperliquid" ? ["BTC", "ETH", "SOL", "HYPE"] : ["BTC", "ETH", "SOL"];
+  return sanitizeSymbols(str);
 }
 
 let ws = null;
@@ -82,6 +84,7 @@ function clearAllTimers() {
 function connect() {
   if (isClosing) return;
   clearAllTimers();
+  if (activeSymbols.length === 0) { emit({ type: "status", provider, status: "DISCONNECTED" }); return; }
 
   emit({ type: "status", provider, status: "CONNECTING" });
   emit({ type: "subscriptions", provider, action: "initial", symbols: activeSymbols.slice() });
@@ -107,7 +110,7 @@ function getBinanceStreams(symbols) {
 
 function connectBinance() {
   const streams = getBinanceStreams(activeSymbols);
-  const streamPath = streams.length > 0 ? streams.join("/") : "btcusdt@ticker";
+  const streamPath = streams.join("/");
   const url = `wss://stream.binance.com:9443/stream?streams=${streamPath}`;
   ws = new WebSocket(url);
 
@@ -217,7 +220,9 @@ function handleStdinCommand(cmdObj) {
     activeSymbols = symbols;
     emit({ type: "subscriptions", provider, action: "set_subscriptions", symbols: activeSymbols.slice() });
 
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (activeSymbols.length === 0) { clearAllTimers(); closeSocket(); emit({ type: "status", provider, status: "DISCONNECTED" }); return; }
+    if (!ws) { connect(); return; }
+    if (ws.readyState !== WebSocket.OPEN) return;
 
     if (provider === "binance") {
       const toUnsub = oldSymbols.filter(s => !symbols.includes(s));
@@ -349,9 +354,17 @@ rl.on("line", (line) => {
   } catch (e) {}
 });
 
+function closeSocket() {
+  if (!ws) return;
+  ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+  try { ws.close(); } catch (e) {}
+  ws = null;
+}
+
 function handleClose(reason) {
   if (isClosing) return;
   clearAllTimers();
+  closeSocket();
   emit({ type: "status", provider, status: "RECONNECTING", reason: String(reason || "") });
 
   const jitter = Math.floor(Math.random() * 1000);
@@ -381,6 +394,7 @@ function cleanupAndExit(code = 0) {
 }
 
 // Ensure process terminates cleanly when parent shell exits or closes pipes
+process.stdout.on("error", () => cleanupAndExit(0));
 process.on("SIGINT", () => cleanupAndExit(0));
 process.on("SIGTERM", () => cleanupAndExit(0));
 process.on("SIGHUP", () => cleanupAndExit(0));
