@@ -8,13 +8,14 @@ Item {
 
   property var points: [] // Array of numbers or { close: number, ... }
   property bool isPositive: true
+  property string currency: "USD"
   property color positiveColor: "#26a69a"
   property color negativeColor: "#ef5350"
 
-  readonly property color strokeColor: isPositive ? positiveColor : negativeColor
+  readonly property color strokeColor: numericPoints.length < 2 ? Util.alpha(Color.foreground, 0.75) : isPositive ? positiveColor : negativeColor
   readonly property var numericPoints: {
     var arr = []
-    if (!points || points.length === 0) return [0, 0]
+    if (!points || points.length === 0) return []
     for (var i = 0; i < points.length; i++) {
       var raw = points[i]
       var num = NaN
@@ -29,7 +30,7 @@ Item {
         arr.push(num)
       }
     }
-    return arr.length >= 2 ? arr : (arr.length === 1 ? [arr[0], arr[0]] : [0, 0])
+    return arr
   }
 
   readonly property real minVal: {
@@ -50,7 +51,7 @@ Item {
     return max === -Infinity ? 0 : max
   }
 
-  readonly property bool hasData: numericPoints.length >= 2 && points && points.length >= 2
+  readonly property bool hasData: numericPoints.length >= 1 && points && points.length >= 1
   opacity: hasData ? 1.0 : 0.4
   Behavior on opacity { NumberAnimation { duration: 150 } }
 
@@ -72,7 +73,7 @@ Item {
     return mon + " " + day + ", " + hrs + ":" + mins
   }
 
-  onPointsChanged: canvas.requestPaint()
+  onPointsChanged: { hovered = false; hoverIndex = -1; hoverCandle = null; canvas.requestPaint() }
   onWidthChanged: canvas.requestPaint()
   onHeightChanged: canvas.requestPaint()
   onIsPositiveChanged: canvas.requestPaint()
@@ -97,14 +98,7 @@ Item {
       var drawH = height - padTop - padBottom
 
       var pts = root.numericPoints
-      if (!root.hasData || !pts || pts.length < 2) {
-        // Render subdued flat baseline for empty/loading state (no fake bezier)
-        ctx.beginPath()
-        ctx.moveTo(padLeft, padTop + drawH / 2)
-        ctx.lineTo(width - padRight, padTop + drawH / 2)
-        ctx.strokeStyle = Util.alpha(Color.foreground, 0.15)
-        ctx.lineWidth = 1
-        ctx.stroke()
+      if (!root.hasData || !pts || pts.length === 0) {
         return
       }
 
@@ -115,13 +109,22 @@ Item {
 
       var coords = []
       for (var i = 0; i < pts.length; i++) {
-        var x = padLeft + (i / (pts.length - 1)) * drawW
-        var normY = (pts[i] - min) / range
+        var x = padLeft + (pts.length === 1 ? 0.5 : i / (pts.length - 1)) * drawW
+        var normY = max === min ? 0.5 : (pts[i] - min) / range
         var y = padTop + (1.0 - normY) * drawH
         coords.push({ x: x, y: y })
       }
 
       var strokeCol = root.strokeColor
+      if (pts.length === 1) {
+        // A newly opened session can have exactly one real candle. Show the
+        // observation without duplicating it to manufacture a line.
+        ctx.beginPath()
+        ctx.arc(coords[0].x, coords[0].y, Style.space(4), 0, Math.PI * 2)
+        ctx.fillStyle = strokeCol
+        ctx.fill()
+        return
+      }
       var fillBase = Qt.rgba(strokeCol.r, strokeCol.g, strokeCol.b, 0.25)
       var fillZero = Qt.rgba(strokeCol.r, strokeCol.g, strokeCol.b, 0.0)
 
@@ -223,7 +226,7 @@ Item {
       }
 
       Text {
-        text: MarketModel.formatPrice(root.hoverCandle ? (typeof root.hoverCandle.close === "number" ? root.hoverCandle.close : (root.hoverCandle.price || 0)) : 0)
+        text: MarketModel.formatPrice(root.hoverCandle ? (typeof root.hoverCandle.close === "number" ? root.hoverCandle.close : (root.hoverCandle.price || 0)) : 0, undefined, root.currency)
         font.family: Style.font.family
         font.pixelSize: Style.font.caption
         font.bold: true
@@ -297,7 +300,7 @@ Item {
     anchors.rightMargin: Style.space(6)
 
     Text {
-      text: "L: " + (root.minVal > 0 ? MarketModel.formatPrice(root.minVal) : "--")
+      text: "L: " + (root.minVal > 0 ? MarketModel.formatPrice(root.minVal, undefined, root.currency) : "--")
       font.family: Style.font.family
       font.pixelSize: Style.font.caption
       font.bold: true
@@ -307,7 +310,7 @@ Item {
     Item { width: Math.max(1, parent.width - parent.children[0].width - parent.children[2].width); height: 1 }
 
     Text {
-      text: "H: " + (root.maxVal > 0 ? MarketModel.formatPrice(root.maxVal) : "--")
+      text: "H: " + (root.maxVal > 0 ? MarketModel.formatPrice(root.maxVal, undefined, root.currency) : "--")
       font.family: Style.font.family
       font.pixelSize: Style.font.caption
       font.bold: true

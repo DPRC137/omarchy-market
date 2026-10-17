@@ -2,7 +2,7 @@
 
 .pragma library
 
-var SCHEMA_VERSION = 1;
+var SCHEMA_VERSION = 2;
 var MAX_WATCHLIST_SIZE = 20;
 
 var INSTRUMENT_TYPES = {
@@ -275,7 +275,7 @@ var INSTRUMENT_CATALOG = [
     asset: "HYPE",
     name: "Hyperliquid",
     assetClass: "crypto",
-    instrument: "HYPE_USD_PERP",
+    instrument: "HYPE_USDC_PERP",
     precision: 3,
     aliases: ["hype", "hyperliquid"],
     providers: { hyperliquid: "HYPE" }
@@ -620,7 +620,7 @@ for (var a in CATALOG_BY_ASSET) {
 
 var DEFAULT_ASSETS = ["BTC", "ETH", "SOL", "HYPE"];
 
-var DYNAMIC_SYMBOL_REGEX = /^[A-Z0-9.\-]{1,10}$/;
+var DYNAMIC_SYMBOL_REGEX = /^[A-Z0-9.\-]{1,24}$/;
 
 function toFiniteNumber(val, fallback) {
   var def = (typeof fallback === "number" && Number.isFinite(fallback)) ? fallback : 0;
@@ -664,7 +664,8 @@ function canonicalizeDynamicStock(item) {
     asset: sym,
     name: name,
     assetClass: "stock",
-    instrument: sym + "_USD_STOCK",
+    instrument: sym + "_" + (validCurrency(item.currency) || "UNKNOWN") + "_STOCK",
+    currency: validCurrency(item.currency),
     exchange: exchange,
     precision: precision,
     aliases: [sym.toLowerCase()],
@@ -885,6 +886,8 @@ function deserializeWatchlist(rawString) {
         name: (catalogEntry.assetClass === "stock" && typeof it.name === "string" && it.name.trim()) ? it.name.trim().slice(0, 100) : catalogEntry.name,
         instrument: catalogEntry.instrument,
         precision: catalogEntry.precision,
+        currency: catalogEntry.currency || null,
+        exchange: catalogEntry.exchange,
         assetClass: catalogEntry.assetClass || "crypto",
         providers: Object.assign({}, catalogEntry.providers)
       });
@@ -897,7 +900,7 @@ function deserializeWatchlist(rawString) {
     }
 
     return {
-      version: typeof parsed.version === "number" ? parsed.version : SCHEMA_VERSION,
+      version: SCHEMA_VERSION,
       items: cleanItems
     };
   }
@@ -936,6 +939,8 @@ function addWatchlistMarket(watchlistObj, assetOrItem) {
     name: catalogItem.name,
     instrument: catalogItem.instrument,
     precision: catalogItem.precision,
+    currency: catalogItem.currency || null,
+    exchange: catalogItem.exchange,
     assetClass: catalogItem.assetClass || "crypto",
     providers: Object.assign({}, catalogItem.providers)
   });
@@ -999,12 +1004,13 @@ function reorderWatchlistMarket(watchlistObj, fromIndex, toIndex) {
 
 function createEmptyQuote(asset, provider) {
   var cat = getCatalogItem(asset) || { name: asset, symbol: asset, precision: 2, icon: "", assetClass: "crypto" };
-  var prov = provider || "aggregate";
+  var prov = !provider || provider === "aggregate" ? selectedProvider(asset) : provider;
   var isStock = (cat.assetClass === "stock" || (cat.instrument && cat.instrument.indexOf("STOCK") !== -1));
   var isPerp = (!isStock && (asset === "HYPE" || prov === "hyperliquid" || (cat.instrument && cat.instrument.indexOf("PERP") !== -1)));
 
-  var inst = isStock ? (asset + "_USD_STOCK") : (isPerp ? (asset + "_USD_PERP") : (asset + "_USD_SPOT"));
-  var pType = isStock ? INSTRUMENT_TYPES.STOCK_LAST : (isPerp ? INSTRUMENT_TYPES.PERP_MID : INSTRUMENT_TYPES.SPOT_LAST);
+  var currency = isStock ? (cat.currency || null) : isPerp ? (asset === "HYPE" ? "USDC" : "USDT") : prov === "binance" ? "USDT" : "USD";
+  var inst = isStock ? (asset + "_" + (cat.currency || "UNKNOWN") + "_STOCK") : (isPerp ? (asset + "_" + currency + "_PERP") : (asset + (prov === "binance" ? "_USDT_SPOT" : "_USD_SPOT")));
+  var pType = isStock ? INSTRUMENT_TYPES.STOCK_LAST : (isPerp ? INSTRUMENT_TYPES.PERP_MARK : INSTRUMENT_TYPES.SPOT_LAST);
 
   return {
     asset: asset,
@@ -1012,26 +1018,28 @@ function createEmptyQuote(asset, provider) {
     priceType: pType,
     name: cat.name,
     icon: "",
-    symbol: isStock ? asset : (asset + "/USD"),
+    symbol: isStock ? asset : (asset + "/" + currency),
     provider: prov,
+    currency: currency,
+    volumeUnit: isStock ? "shares" : currency,
     exchange: providerDisplayName(prov),
-    price: 0,
-    change24h: 0,
-    changePercent24h: 0,
-    changeAmount: 0,
-    previousClose: 0,
-    open: 0,
-    high24h: 0,
-    low24h: 0,
-    volume24h: 0,
-    bid: 0,
-    ask: 0,
-    spread: 0,
+    price: null,
+    change24h: null,
+    changePercent24h: null,
+    changeAmount: null,
+    previousClose: null,
+    open: null,
+    high24h: null,
+    low24h: null,
+    volume24h: null,
+    bid: null,
+    ask: null,
+    spread: null,
     providerTimestamp: 0,
     receivedTimestamp: 0,
-    freshness: "OFFLINE",
+    freshness: "UNAVAILABLE",
     assetClass: isStock ? "stock" : "crypto",
-    marketState: "closed"
+    marketState: "unknown"
   };
 }
 
@@ -1072,30 +1080,33 @@ function inferAssetFromCoinbaseProduct(productId) {
 // Normalizes Binance 24hr ticker websocket or REST payload
 function normalizeBinanceTicker(data, now) {
   if (!data) return null;
-  var symbol = String(data.s || "");
+  var symbol = String(data.s || data.symbol || "");
   var asset = inferAssetFromBinanceSymbol(symbol);
   if (!asset) return null;
 
   var cat = getCatalogItem(asset);
-  if (!cat) return null;
+  if (!cat || !cat.providers || cat.providers.binance !== symbol) return null;
 
-  var price = toFiniteNumber(data.c, 0);
-  var change24h = toFiniteNumber(data.P, 0);
-  var high24h = toFiniteNumber(data.h, 0);
-  var low24h = toFiniteNumber(data.l, 0);
-  var volume24h = toFiniteNumber(data.q, 0);
-  var bid = toFiniteNumber(data.b, 0);
-  var ask = toFiniteNumber(data.a, 0);
+  var price = optionalNumber(data.c !== undefined ? data.c : data.lastPrice);
+  if (!(price > 0)) return null;
+  var change24h = optionalNumber(data.P !== undefined ? data.P : data.priceChangePercent);
+  var high24h = optionalNumber(data.h !== undefined ? data.h : data.highPrice);
+  var low24h = optionalNumber(data.l !== undefined ? data.l : data.lowPrice);
+  var volume24h = optionalNumber(data.q !== undefined ? data.q : data.quoteVolume);
+  var bid = optionalNumber(data.b !== undefined ? data.b : data.bidPrice);
+  var ask = optionalNumber(data.a !== undefined ? data.a : data.askPrice);
   var recTime = now || Date.now();
-  var eventTime = toFiniteNumber(data.E, recTime);
+  var eventTime = toFiniteNumber(data.E || data.closeTime, recTime);
 
   return {
     asset: asset,
-    instrument: cat.instrument,
+    instrument: asset + "_USDT_SPOT",
+    currency: "USDT",
+    volumeUnit: "USDT",
     priceType: INSTRUMENT_TYPES.SPOT_LAST,
     name: cat.name,
     icon: "",
-    symbol: asset + "/USD",
+    symbol: asset + "/USDT",
     provider: "binance",
     exchange: "Binance",
     price: price,
@@ -1126,19 +1137,19 @@ function normalizeCoinbaseTicker(data, now) {
   if (!asset) return null;
 
   var cat = getCatalogItem(asset);
-  if (!cat) return null;
+  if (!cat || !cat.providers || cat.providers.coinbase !== prod) return null;
 
   var price = toFiniteNumber(data.price, 0);
   var open24h = toFiniteNumber(data.open_24h, 0);
-  var change24h = 0;
+  if (!(price > 0)) return null;
+  var change24h = null;
   if (open24h > 0 && price > 0) {
     change24h = ((price - open24h) / open24h) * 100;
   }
-  change24h = toFiniteNumber(change24h, 0);
-  var high24h = toFiniteNumber(data.high_24h, 0);
-  var low24h = toFiniteNumber(data.low_24h, 0);
-  var baseVol = toFiniteNumber(data.volume_24h, 0);
-  var volume24h = toFiniteNumber(baseVol * (price > 0 ? price : 1), 0);
+
+  var high24h = optionalNumber(data.high_24h);
+  var low24h = optionalNumber(data.low_24h);
+  var volume24h = optionalNumber(data.volume_24h);
   var bid = toFiniteNumber(data.best_bid, 0);
   var ask = toFiniteNumber(data.best_ask, 0);
   var recTime = now || Date.now();
@@ -1147,7 +1158,9 @@ function normalizeCoinbaseTicker(data, now) {
 
   return {
     asset: asset,
-    instrument: cat.instrument,
+    instrument: asset + "_USD_SPOT",
+    currency: "USD",
+    volumeUnit: asset,
     priceType: INSTRUMENT_TYPES.SPOT_LAST,
     name: cat.name,
     icon: "",
@@ -1195,40 +1208,43 @@ function normalizeHyperliquidMeta(data, targetAssets, now) {
     if (!ctx) continue;
 
     var cat = getCatalogItem(name);
-    var price = toFiniteNumber(ctx.markPx || ctx.midPx, 0);
+    var price = toFiniteNumber(ctx.markPx, 0);
+    if (!(price > 0)) continue;
     var prevDay = toFiniteNumber(ctx.prevDayPx, 0);
-    var change24h = 0;
+    var change24h = null;
     if (prevDay > 0 && price > 0) {
       change24h = ((price - prevDay) / prevDay) * 100;
     }
-    change24h = toFiniteNumber(change24h, 0);
-    var volume24h = toFiniteNumber(ctx.dayNtlVlm, 0);
-    var rawBid = ctx.impactPxs && ctx.impactPxs[0] ? ctx.impactPxs[0] : price;
-    var rawAsk = ctx.impactPxs && ctx.impactPxs[1] ? ctx.impactPxs[1] : price;
-    var bid = toFiniteNumber(rawBid, price);
-    var ask = toFiniteNumber(rawAsk, price);
+
+    // Contract denomination differs from collateral. HYPE is USDC-priced;
+    // other supported crypto contracts use USDT with USDC collateral.
+    var currency = name === "HYPE" ? "USDC" : "USDT";
+    var volume24h = optionalNumber(ctx.dayNtlVlm);
 
     results.push({
       asset: name,
-      instrument: name + "_USD_PERP",
-      priceType: INSTRUMENT_TYPES.PERP_MID,
+      instrument: name + "_" + currency + "_PERP",
+      currency: currency,
+      collateralCurrency: "USDC",
+      volumeUnit: currency + " notional",
+      priceType: INSTRUMENT_TYPES.PERP_MARK,
       name: cat ? cat.name : name,
       icon: "",
-      symbol: name + "/USD",
+      symbol: name + "/" + currency,
       provider: "hyperliquid",
       exchange: "Hyperliquid",
       price: isNaN(price) ? 0 : price,
-      change24h: isNaN(change24h) ? 0 : change24h,
-      changePercent24h: isNaN(change24h) ? 0 : change24h,
+      change24h: change24h,
+      changePercent24h: change24h,
       changeAmount: 0,
       previousClose: prevDay,
       open: prevDay,
-      high24h: 0,
-      low24h: 0,
-      volume24h: isNaN(volume24h) ? 0 : volume24h,
-      bid: isNaN(bid) ? 0 : bid,
-      ask: isNaN(ask) ? 0 : ask,
-      spread: (bid > 0 && ask >= bid) ? (ask - bid) : 0,
+      high24h: null,
+      low24h: null,
+      volume24h: volume24h,
+      bid: null,
+      ask: null,
+      spread: null,
       providerTimestamp: recTime,
       receivedTimestamp: recTime,
       freshness: "LIVE",
@@ -1240,197 +1256,61 @@ function normalizeHyperliquidMeta(data, targetAssets, now) {
   return results;
 }
 
-// Normalizes Yahoo Finance v8 chart API payload for Equities
+// Yahoo headlines always use regular-session prices, including while the
+// exchange is in pre/post-market. Session status is independently clock-driven.
 function normalizeYahooChart(data, now) {
-  if (!data || !data.chart || !Array.isArray(data.chart.result) || data.chart.result.length === 0) {
-    return null;
-  }
-  var result = data.chart.result[0];
+  var result = data && data.chart && data.chart.result && data.chart.result[0];
   if (!result || !result.meta) return null;
   var meta = result.meta;
-  var symbol = String(meta.symbol || "").toUpperCase();
-  if (!symbol) return null;
-
-  var cat = getCatalogItem(symbol);
-  if (!cat) return null;
-
-  var recTime = now || Date.now();
-  var timestamps = result.timestamp || [];
-  var quoteData = (result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
-  var opens = quoteData.open || [];
-  var highs = quoteData.high || [];
-  var lows = quoteData.low || [];
-  var closes = quoteData.close || [];
-  var volumes = quoteData.volume || [];
-
-  // Find latest valid close price by scanning backwards
-  var price = 0;
-  var lastTimestampSec = 0;
-  for (var i = closes.length - 1; i >= 0; i--) {
-    var cVal = closes[i];
-    var cNum = toFiniteNumber(cVal, 0);
-    if (cNum > 0) {
-      price = cNum;
-      if (timestamps[i]) {
-        lastTimestampSec = toFiniteNumber(timestamps[i], 0);
-      }
-      break;
+  var asset = String(meta.symbol || "").toUpperCase();
+  var cat = getCatalogItem(asset);
+  var currency = validCurrency(meta.currency);
+  if (!cat || cat.assetClass !== "stock" || !currency) return null;
+  var recTime = now === undefined ? Date.now() : now;
+  var bars = result.indicators && result.indicators.quote && result.indicators.quote[0] || {};
+  var times = result.timestamp || [];
+  var price = optionalNumber(meta.regularMarketPrice);
+  var eventTime = optionalNumber(meta.regularMarketTime);
+  if (!(price > 0)) {
+    for (var i = times.length - 1; i >= 0; i--) {
+      var close = optionalNumber((bars.close || [])[i]);
+      if (close > 0) { price = close; eventTime = times[i]; break; }
     }
   }
-
-  // Fallback to meta.regularMarketPrice if chart close array didn't yield a valid value
-  if (price <= 0 && meta.regularMarketPrice) {
-    price = toFiniteNumber(meta.regularMarketPrice, 0);
-  }
-  if (price <= 0 || !Number.isFinite(price)) return null;
-
-  // Determine market state from meta.currentTradingPeriod
-  // currentTradingPeriod has { pre: { start, end }, regular: { start, end }, post: { start, end } } (in unix epoch seconds)
-  var marketState = "regular";
-  var nowSec = Math.floor(recTime / 1000);
-  var ctp = meta.currentTradingPeriod;
-  var regStart = 0;
-  var regEnd = 0;
-
-  if (ctp) {
-    if (ctp.regular && ctp.regular.start && ctp.regular.end) {
-      regStart = toFiniteNumber(ctp.regular.start, 0);
-      regEnd = toFiniteNumber(ctp.regular.end, 0);
-    }
-    var preStart = ctp.pre ? toFiniteNumber(ctp.pre.start, 0) : 0;
-    var preEnd = ctp.pre ? toFiniteNumber(ctp.pre.end, 0) : 0;
-    var postStart = ctp.post ? toFiniteNumber(ctp.post.start, 0) : 0;
-    var postEnd = ctp.post ? toFiniteNumber(ctp.post.end, 0) : 0;
-
-    if (regStart > 0 && nowSec >= regStart && nowSec < regEnd) {
-      marketState = "regular";
-    } else if (preStart > 0 && nowSec >= preStart && nowSec < preEnd) {
-      marketState = "preMarket";
-    } else if (postStart > 0 && nowSec >= postStart && nowSec < postEnd) {
-      marketState = "postMarket";
-    } else {
-      marketState = "closed";
+  if (!(price > 0)) return null;
+  var previous = optionalNumber(meta.previousClose || meta.chartPreviousClose);
+  var change = previous > 0 ? price - previous : null;
+  var high = optionalNumber(meta.regularMarketDayHigh);
+  var low = optionalNumber(meta.regularMarketDayLow);
+  var volume = optionalNumber(meta.regularMarketVolume);
+  var open = optionalNumber(meta.regularMarketOpen);
+  var period = meta.currentTradingPeriod && meta.currentTradingPeriod.regular;
+  var sessionVolumes = [];
+  if (period) {
+    for (var j = 0; j < times.length; j++) {
+      if (times[j] < period.start || times[j] >= period.end) continue;
+      var h = optionalNumber((bars.high || [])[j]);
+      var l = optionalNumber((bars.low || [])[j]);
+      var v = optionalNumber((bars.volume || [])[j]);
+      if (!open) open = optionalNumber((bars.open || [])[j]);
+      if (!(meta.regularMarketDayHigh > 0) && h > 0) high = high === null ? h : Math.max(high, h);
+      if (!(meta.regularMarketDayLow > 0) && l > 0) low = low === null ? l : Math.min(low, l);
+      if (v !== null) sessionVolumes.push(v);
     }
   }
-
-  // Determine regular-session open price from first regular-session OHLC bar (at or after regStart)
-  var openPrice = 0;
-  if (regStart > 0 && timestamps.length > 0) {
-    for (var j = 0; j < timestamps.length; j++) {
-      if (toFiniteNumber(timestamps[j], 0) >= regStart) {
-        var op = toFiniteNumber(opens[j], 0);
-        var cl = toFiniteNumber(closes[j], 0);
-        if (op > 0) {
-          openPrice = op;
-        } else if (cl > 0) {
-          openPrice = cl;
-        }
-        break;
-      }
-    }
-  }
-  if (openPrice <= 0 && meta.regularMarketPrice) {
-    openPrice = toFiniteNumber(meta.regularMarketPrice, 0);
-  }
-
-  // Determine reference close price for change calculation:
-  // - Pre-market: previous trading day's regular close
-  // - Regular session: previous trading day's regular close
-  // - Post-market: today's regular-session close (identified from chart data at or before regEnd)
-  var prevClose = 0;
-  if (marketState === "postMarket") {
-    if (regEnd > 0 && timestamps.length > 0) {
-      for (var k = timestamps.length - 1; k >= 0; k--) {
-        if (toFiniteNumber(timestamps[k], 0) <= regEnd) {
-          var pcc = toFiniteNumber(closes[k], 0);
-          if (pcc > 0) {
-            prevClose = pcc;
-            break;
-          }
-        }
-      }
-    }
-    if (prevClose <= 0 && meta.regularMarketPrice) {
-      prevClose = toFiniteNumber(meta.regularMarketPrice, 0);
-    }
-  }
-
-  // Fallback to previous day's close for regular / pre-market / closed, or if post-market didn't locate a today close
-  if (prevClose <= 0) {
-    if (meta.previousClose) {
-      prevClose = toFiniteNumber(meta.previousClose, 0);
-    } else if (meta.chartPreviousClose) {
-      prevClose = toFiniteNumber(meta.chartPreviousClose, 0);
-    }
-  }
-
-  var changeAmount = 0;
-  var change24h = 0; // percentage change in Omarchy Market schema
-  if (prevClose > 0 && price > 0) {
-    changeAmount = price - prevClose;
-    change24h = (changeAmount / prevClose) * 100;
-  }
-  changeAmount = toFiniteNumber(changeAmount, 0);
-  change24h = toFiniteNumber(change24h, 0);
-
-  // High, Low, Volume
-  var high24h = toFiniteNumber(meta.regularMarketDayHigh, 0);
-  var low24h = toFiniteNumber(meta.regularMarketDayLow, 0);
-  var volume24h = toFiniteNumber(meta.regularMarketVolume, 0);
-
-  // Fallback high/low/volume from today's bars if meta fields are missing/zero
-  if (high24h <= 0 || low24h <= 0) {
-    var computedHigh = -Infinity;
-    var computedLow = Infinity;
-    var computedVol = 0;
-    var startFilter = regStart > 0 ? regStart : 0;
-    for (var m = 0; m < timestamps.length; m++) {
-      if (toFiniteNumber(timestamps[m], 0) >= startFilter) {
-        var h = toFiniteNumber(highs[m], NaN);
-        if (Number.isFinite(h) && h > computedHigh) computedHigh = h;
-        var l = toFiniteNumber(lows[m], NaN);
-        if (Number.isFinite(l) && l > 0 && l < computedLow) computedLow = l;
-        var v = toFiniteNumber(volumes[m], 0);
-        if (v > 0) computedVol += v;
-      }
-    }
-    if (high24h <= 0 && computedHigh !== -Infinity) high24h = computedHigh;
-    if (low24h <= 0 && computedLow !== Infinity) low24h = computedLow;
-    if (volume24h <= 0 && computedVol > 0) volume24h = computedVol;
-  }
-  high24h = toFiniteNumber(high24h, price);
-  low24h = toFiniteNumber(low24h, price);
-  volume24h = toFiniteNumber(volume24h, 0);
-
-  var eventTime = lastTimestampSec > 0 ? (lastTimestampSec * 1000) : (meta.regularMarketTime ? toFiniteNumber(meta.regularMarketTime, 0) * 1000 : recTime);
-  eventTime = toFiniteNumber(eventTime, recTime);
-
+  if (volume === null && sessionVolumes.length) volume = sessionVolumes.reduce(function(a, b) { return a + b; }, 0);
   return {
-    asset: symbol,
-    instrument: cat.instrument || (symbol + "_USD_STOCK"),
-    priceType: INSTRUMENT_TYPES.STOCK_LAST,
-    name: cat.name,
-    icon: "",
-    symbol: symbol,
-    provider: "yahoo",
-    exchange: cat.exchange || meta.exchangeName || "Yahoo Finance",
-    price: price,
-    change24h: change24h,
-    changePercent24h: change24h,
-    changeAmount: changeAmount,
-    previousClose: prevClose,
-    open: openPrice > 0 ? openPrice : price,
-    high24h: high24h > 0 ? high24h : price,
-    low24h: low24h > 0 ? low24h : price,
-    volume24h: volume24h,
-    bid: price,
-    ask: price,
-    spread: 0,
-    providerTimestamp: eventTime,
-    receivedTimestamp: recTime,
-    freshness: "LIVE",
-    assetClass: "stock",
-    marketState: marketState
+    asset: asset, instrument: asset + "_" + currency + "_STOCK", priceType: INSTRUMENT_TYPES.STOCK_LAST,
+    currency: currency, volumeUnit: "shares", name: cat.name, symbol: asset,
+    provider: "yahoo", exchange: meta.exchangeName || cat.exchange || "Yahoo Finance",
+    price: price, change24h: change === null ? null : change / previous * 100,
+    changePercent24h: change === null ? null : change / previous * 100,
+    changeAmount: change, previousClose: previous, open: open,
+    high24h: high > 0 ? high : null, low24h: low > 0 ? low : null, volume24h: volume,
+    bid: null, ask: null, spread: null,
+    providerTimestamp: eventTime > 0 ? eventTime * 1000 : 0, receivedTimestamp: recTime,
+    freshness: "CURRENT", assetClass: "stock", tradingPeriods: meta.currentTradingPeriod || null,
+    marketState: sessionAt(meta.currentTradingPeriod, recTime)
   };
 }
 
@@ -1477,107 +1357,64 @@ function normalizeYahooCandles(data) {
 }
 
 // Explicit Reference Price Calculation
-function calculateReferenceQuote(asset, quotesByProvider, now) {
+// A reference is one explicit instrument, shared by headline and history. Never
+// average USD with USDT or silently replace a spot market with a perpetual.
+function selectedProvider(asset) {
   var cat = getCatalogItem(asset);
-  var isStock = (cat && (cat.assetClass === "stock" || (cat.instrument && cat.instrument.indexOf("STOCK") !== -1)));
-  var isPerpOnly = (asset === "HYPE" || (cat && cat.instrument && cat.instrument.indexOf("PERP") !== -1));
+  return cat && cat.assetClass === "stock" ? "yahoo" : asset === "HYPE" ? "hyperliquid" : "binance";
+}
 
-  if (isStock) {
-    var yahooQuote = quotesByProvider["yahoo"];
-    if (yahooQuote && yahooQuote.price > 0 && getFreshness(yahooQuote.receivedTimestamp, now) !== "OFFLINE") {
-      return yahooQuote;
-    }
-    return createEmptyQuote(asset, "yahoo");
+function calculateReferenceQuote(asset, quotesByProvider, now) {
+  var provider = selectedProvider(asset);
+  return decorateQuote((quotesByProvider || {})[provider] || createEmptyQuote(asset, provider), now);
+}
+
+function validCurrency(currency) {
+  // Yahoo also uses scaled units (GBp, ZAc); preserve case and never convert.
+  return typeof currency === "string" && /^[A-Za-z]{3}$/.test(currency) ? currency : null;
+}
+
+function optionalNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  var n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function sessionAt(periods, now) {
+  if (!periods) return "unknown";
+  var sec = now / 1000;
+  var names = ["regular", "pre", "post"];
+  var labels = ["regular", "preMarket", "postMarket"];
+  for (var i = 0; i < names.length; i++) {
+    var p = periods[names[i]];
+    if (p && sec >= p.start && sec < p.end) return labels[i];
   }
+  return "closed";
+}
 
-  if (isPerpOnly) {
-    var hlQuote = quotesByProvider["hyperliquid"];
-    if (hlQuote && hlQuote.price > 0 && getFreshness(hlQuote.receivedTimestamp, now) !== "OFFLINE") {
-      return hlQuote;
-    }
-    return createEmptyQuote(asset, "hyperliquid");
-  }
+function decorateQuote(quote, now) {
+  var q = Object.assign({}, quote);
+  var current = now === undefined ? Date.now() : now;
+  if (q.assetClass === "stock") q.marketState = sessionAt(q.tradingPeriods, current);
+  var age = Math.max(0, current - q.receivedTimestamp);
+  var expected = q.provider === "yahoo" ? (q.marketState === "closed" ? 660000 : 120000) : 15000;
+  q.freshness = !(q.price > 0) ? "UNAVAILABLE" : age <= expected ? (q.provider === "yahoo" ? "CURRENT" : "LIVE") : "STALE";
+  return q;
+}
 
-  // Combine compatible spot providers (Binance + Coinbase)
-  var spotQuotes = [];
-  var spotProviders = ["binance", "coinbase"];
-  for (var i = 0; i < spotProviders.length; i++) {
-    var q = quotesByProvider[spotProviders[i]];
-    if (q && q.price > 0 && getFreshness(q.receivedTimestamp, now) !== "OFFLINE") {
-      spotQuotes.push(q);
-    }
-  }
-
-  if (spotQuotes.length === 0) {
-    var hl = quotesByProvider["hyperliquid"];
-    if (hl && hl.price > 0 && getFreshness(hl.receivedTimestamp, now) !== "OFFLINE") {
-      return hl;
-    }
-    return createEmptyQuote(asset, "aggregate");
-  }
-
-  if (spotQuotes.length === 1) {
-    return spotQuotes[0];
-  }
-
-  var totalPrice = 0;
-  var totalChange = 0;
-  var totalVolume = 0;
-  var maxHigh = 0;
-  var minLow = Infinity;
-  var bestBid = 0;
-  var bestAsk = Infinity;
-  var latestRec = 0;
-
-  for (var k = 0; k < spotQuotes.length; k++) {
-    var item = spotQuotes[k];
-    totalPrice += item.price;
-    totalChange += item.change24h;
-    totalVolume += item.volume24h;
-    if (item.high24h > maxHigh) maxHigh = item.high24h;
-    if (item.low24h > 0 && item.low24h < minLow) minLow = item.low24h;
-    if (item.bid > bestBid) bestBid = item.bid;
-    if (item.ask > 0 && item.ask < bestAsk) bestAsk = item.ask;
-    if (item.receivedTimestamp > latestRec) latestRec = item.receivedTimestamp;
-  }
-
-  var avgPrice = totalPrice / spotQuotes.length;
-  var avgChange = totalChange / spotQuotes.length;
-  var name = cat ? cat.name : asset;
-
-  return {
-    asset: asset,
-    instrument: asset + "_USD_SPOT",
-    priceType: INSTRUMENT_TYPES.SPOT_LAST,
-    name: name,
-    icon: "",
-    symbol: asset + "/USD",
-    provider: "aggregate",
-    exchange: "Reference Spot (" + spotQuotes.length + " feeds)",
-    price: avgPrice,
-    change24h: avgChange,
-    changePercent24h: avgChange,
-    changeAmount: 0,
-    previousClose: 0,
-    open: 0,
-    high24h: maxHigh > 0 ? maxHigh : avgPrice,
-    low24h: minLow !== Infinity ? minLow : avgPrice,
-    volume24h: totalVolume,
-    bid: bestBid,
-    ask: bestAsk !== Infinity ? bestAsk : avgPrice,
-    spread: (bestBid > 0 && bestAsk !== Infinity && bestAsk >= bestBid) ? (bestAsk - bestBid) : 0,
-    providerTimestamp: latestRec,
-    receivedTimestamp: latestRec,
-    freshness: getFreshness(latestRec, now),
-    assetClass: "crypto",
-    marketState: "regular"
-  };
+function formatAge(timestamp, now) {
+  if (!(timestamp > 0)) return "no update";
+  var seconds = Math.max(0, Math.floor(((now === undefined ? Date.now() : now) - timestamp) / 1000));
+  if (seconds < 60) return seconds + "s ago";
+  if (seconds < 3600) return Math.floor(seconds / 60) + "m ago";
+  if (seconds < 86400) return Math.floor(seconds / 3600) + "h ago";
+  return Math.floor(seconds / 86400) + "d ago";
 }
 
 // Strict and deterministic price formatting
-function formatPrice(value, precision) {
-  var num = Number(value);
-  if (isNaN(num) || num === 0) return "$0.00";
+function formatPrice(value, precision, currency, omitCurrency) {
+  var num = optionalNumber(value);
+  if (num === null || num <= 0) return "—";
   var p;
   if (precision !== undefined) {
     p = precision;
@@ -1593,49 +1430,27 @@ function formatPrice(value, precision) {
   var fixed = num.toFixed(p);
   var parts = fixed.split(".");
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return "$" + parts.join(".");
+  return (omitCurrency ? "" : currency === "USD" || currency === undefined ? "$" : (currency || "?") + " ") + parts.join(".");
 }
 
-function formatCompactPrice(value) {
-  var num = Number(value);
-  if (isNaN(num) || num === 0) return "$0";
-  if (num >= 1000000) {
-    return "$" + (num / 1000000).toFixed(2) + "M";
-  }
-  if (num >= 1000) {
-    return "$" + (num / 1000).toFixed(num >= 10000 ? 1 : 2) + "K";
-  }
-  if (num >= 10) {
-    return "$" + num.toFixed(1);
-  }
-  if (num >= 1) {
-    return "$" + num.toFixed(2);
-  }
-  if (num >= 0.01) {
-    return "$" + num.toFixed(3);
-  }
-  return "$" + num.toFixed(4);
+function formatCompactPrice(value, currency, omitCurrency) {
+  var num = optionalNumber(value);
+  if (num === null || num <= 0) return "—";
+  var prefix = omitCurrency ? "" : currency === "USD" || currency === undefined ? "$" : (currency || "?") + " ";
+  var text = num >= 1e6 ? (num / 1e6).toFixed(2) + "M" : num >= 1000 ? (num / 1000).toFixed(num >= 10000 ? 1 : 2) + "K" : num.toFixed(num >= 10 ? 1 : num >= 1 ? 2 : num >= 0.01 ? 3 : 4);
+  return prefix + text;
 }
 
 function formatPercentage(value) {
-  var num = Number(value);
-  if (isNaN(num)) return "0.00%";
+  var num = optionalNumber(value);
+  if (num === null) return "—";
   var sign = num > 0 ? "+" : "";
   return sign + num.toFixed(2) + "%";
 }
 
-function formatVolume(value) {
-  var num = Number(value);
-  if (isNaN(num) || num <= 0) return "$0";
-  if (num >= 1e9) {
-    return "$" + (num / 1e9).toFixed(2) + "B";
-  }
-  if (num >= 1e6) {
-    return "$" + (num / 1e6).toFixed(2) + "M";
-  }
-  if (num >= 1e3) {
-    return "$" + (num / 1e3).toFixed(1) + "K";
-  }
-  return "$" + num.toFixed(0);
+function formatVolume(value, unit) {
+  var num = optionalNumber(value);
+  if (num === null || num < 0) return "—";
+  var text = num >= 1e9 ? (num / 1e9).toFixed(2) + "B" : num >= 1e6 ? (num / 1e6).toFixed(2) + "M" : num >= 1e3 ? (num / 1e3).toFixed(1) + "K" : num.toFixed(0);
+  return text + " " + (unit || "USD");
 }
-

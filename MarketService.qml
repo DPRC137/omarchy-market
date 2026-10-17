@@ -1,296 +1,172 @@
 import QtQuick
 import QtCore
-import Quickshell
 import "models/MarketModel.js" as MarketModel
+import "models/History.js" as History
 import "providers"
 
 Item {
   id: root
-
-  // Properties injected by shell.qml when mounted as a service
   property var shell: null
   property string omarchyPath: ""
   property var manifest: null
   property var barWidgetRegistry: null
   property var pluginRegistry: null
-
-  // Watchlist & Settings
   property var structuredWatchlist: MarketModel.createDefaultWatchlist()
   property var watchlist: ["BTC", "ETH", "SOL", "HYPE"]
-  property string preferredProvider: "aggregate" // aggregate, binance, coinbase, hyperliquid
   property int updateRevision: 0
-
-  // Quote Stores: quotes[asset][provider]
+  property double now: Date.now()
   property var quotesByAssetProvider: ({})
-  property var referenceQuotes: ({})
-  property var candleStore: ({})
-
+  property var history: null
+  property string visibleAsset: ""
+  property string visibleRange: "1D"
+  property var removedItem: null
+  property int removedIndex: -1
+  property alias pinnedAsset: pluginSettings.pinnedAsset
+  property alias rotationEnabled: pluginSettings.rotationEnabled
   signal quoteUpdated(string asset, var quote)
   signal candlesUpdated(string asset, string timeframe, var candles)
 
   Settings {
     id: pluginSettings
     category: "io.github.dpr.omarchy-market"
+    // Keep the host's established QSettings store when it has an identity.
+    // Some Quickshell hosts omit it entirely; those require an explicit file.
+    location: StandardPaths.writableLocation(StandardPaths.GenericConfigLocation) + "/" + (Qt.application.organization || "Unknown Organization") + "/" + (Qt.application.name || "quickshell") + ".conf"
     property string watchlistJson: ""
+    property string pinnedAsset: ""
+    property bool rotationEnabled: false
   }
-
-  function loadWatchlist() {
-    var loaded = MarketModel.deserializeWatchlist(pluginSettings.watchlistJson)
-    structuredWatchlist = loaded
-    watchlist = loaded.items.map(function(it) { return it.asset })
+  // Hosts without application identifiers wrote legacy v1 settings to the
+  // General group despite the declared category. Read that group only when
+  // the correctly scoped store is empty; never overwrite the legacy value.
+  Settings {
+    id: legacySettings
+    location: pluginSettings.location
+  }
+  function persist(watchlistObject) {
+    MarketModel.clearDynamicInstruments()
+    watchlistObject.items.forEach(function(item) { if (item.assetClass === "stock" && !MarketModel.CATALOG_BY_ASSET[item.asset]) MarketModel.registerDynamicInstrument(item) })
+    structuredWatchlist = watchlistObject
+    watchlist = watchlistObject.items.map(function(it) { return it.asset; })
+    var retained = {}
+    watchlist.forEach(function(asset) { if (root.quotesByAssetProvider[asset]) retained[asset] = root.quotesByAssetProvider[asset]; })
+    quotesByAssetProvider = retained
+    pluginSettings.watchlistJson = MarketModel.serializeWatchlist(watchlistObject)
     syncProviders()
+    updateRevision++
   }
-
-  function saveWatchlist() {
-    pluginSettings.watchlistJson = MarketModel.serializeWatchlist(structuredWatchlist)
+  function addMarket(item) {
+    var result = MarketModel.addWatchlistMarket(structuredWatchlist, item)
+    if (result.success) persist(result.watchlist)
+    return result
   }
-
-  function addMarket(assetOrQuery) {
-    var res = MarketModel.addWatchlistMarket(structuredWatchlist, assetOrQuery)
-    if (res.success) {
-      structuredWatchlist = res.watchlist
-      watchlist = res.watchlist.items.map(function(it) { return it.asset })
-      saveWatchlist()
-      syncProviders()
-      root.updateRevision++
-      fetchCandles(watchlist[watchlist.length - 1], "1H")
-    }
-    return res
-  }
-
   function removeMarket(asset) {
-    var res = MarketModel.removeWatchlistMarket(structuredWatchlist, asset)
-    if (res.success) {
-      structuredWatchlist = res.watchlist
-      watchlist = res.watchlist.items.map(function(it) { return it.asset })
-      saveWatchlist()
-      syncProviders()
-      root.updateRevision++
+    var index = watchlist.indexOf(asset)
+    var result = MarketModel.removeWatchlistMarket(structuredWatchlist, asset)
+    if (result.success) {
+      removedItem = structuredWatchlist.items[index]; removedIndex = index
+      persist(result.watchlist)
+      if (visibleAsset === asset) setVisibleChart("", visibleRange)
+      var next = Object.assign({}, quotesByAssetProvider); delete next[asset]; quotesByAssetProvider = next
     }
-    return res
+    return result
   }
-
-  function reorderMarket(fromIndex, toIndex) {
-    var res = MarketModel.reorderWatchlistMarket(structuredWatchlist, fromIndex, toIndex)
-    if (res.success) {
-      structuredWatchlist = res.watchlist
-      watchlist = res.watchlist.items.map(function(it) { return it.asset })
-      saveWatchlist()
-      root.updateRevision++
+  function undoRemoval() {
+    if (!removedItem) return
+    var result = MarketModel.addWatchlistMarket(structuredWatchlist, removedItem)
+    if (result.success) {
+      result = MarketModel.reorderWatchlistMarket(result.watchlist, result.watchlist.items.length - 1, Math.min(removedIndex, result.watchlist.items.length - 1))
+      persist(result.watchlist); removedItem = null
     }
-    return res
   }
-
-  function searchMarkets(query) {
-    return MarketModel.searchCatalog(query)
+  function reorderMarket(from, to) {
+    var result = MarketModel.reorderWatchlistMarket(structuredWatchlist, from, to)
+    if (result.success) persist(result.watchlist)
+    return result
   }
-
-  function isInWatchlist(asset) {
-    if (!asset) return false
-    var upper = String(asset).toUpperCase()
-    return root.watchlist.indexOf(upper) !== -1
-  }
-
+  function searchMarkets(query) { return MarketModel.searchCatalog(query) }
+  function isInWatchlist(asset) { return watchlist.indexOf(asset) >= 0 }
   function syncProviders() {
-    if (binanceProvider) binanceProvider.updateSubscriptions(root.watchlist)
-    if (coinbaseProvider) coinbaseProvider.updateSubscriptions(root.watchlist)
-    if (hyperliquidProvider) hyperliquidProvider.updateSubscriptions(root.watchlist)
-    if (yahooProvider) yahooProvider.updateSubscriptions(root.watchlist)
+    binance.updateSubscriptions(watchlist)
+    coinbase.updateSubscriptions(watchlist)
+    hyperliquid.updateSubscriptions(watchlist)
+    yahoo.updateSubscriptions(watchlist)
   }
+  BinanceProvider { id: binance; onQuoteReceived: function(asset, quote) { root.handleProviderQuote("binance", asset, quote) } }
+  CoinbaseProvider { id: coinbase; onQuoteReceived: function(asset, quote) { root.handleProviderQuote("coinbase", asset, quote) } }
+  HyperliquidProvider { id: hyperliquid; onQuoteReceived: function(asset, quote) { root.handleProviderQuote("hyperliquid", asset, quote) } }
+  YahooProvider { id: yahoo; onQuoteReceived: function(asset, quote) { root.handleProviderQuote("yahoo", asset, quote) } }
 
-  // Provider instances
-  BinanceProvider {
-    id: binanceProvider
-    targetAssets: root.watchlist
-    onQuoteReceived: function(asset, quote) { root.handleProviderQuote("binance", asset, quote) }
-    onCandlesReceived: function(asset, timeframe, list) { root.handleCandles("binance", asset, timeframe, list) }
-  }
-
-  CoinbaseProvider {
-    id: coinbaseProvider
-    targetAssets: root.watchlist
-    onQuoteReceived: function(asset, quote) { root.handleProviderQuote("coinbase", asset, quote) }
-    onCandlesReceived: function(asset, timeframe, list) { root.handleCandles("coinbase", asset, timeframe, list) }
-  }
-
-  HyperliquidProvider {
-    id: hyperliquidProvider
-    targetAssets: root.watchlist
-    onQuoteReceived: function(asset, quote) { root.handleProviderQuote("hyperliquid", asset, quote) }
-    onCandlesReceived: function(asset, timeframe, list) { root.handleCandles("hyperliquid", asset, timeframe, list) }
-  }
-
-  YahooProvider {
-    id: yahooProvider
-    targetAssets: root.watchlist
-    onQuoteReceived: function(asset, quote) { root.handleProviderQuote("yahoo", asset, quote) }
-    onCandlesReceived: function(asset, timeframe, list) { root.handleCandles("yahoo", asset, timeframe, list) }
-  }
-
-  function handleProviderQuote(providerId, asset, quote) {
-    if (!asset || !quote) return
-
-    var byAsset = Object.assign({}, quotesByAssetProvider)
-    if (!byAsset[asset]) byAsset[asset] = {}
-    byAsset[asset][providerId] = quote
-    quotesByAssetProvider = byAsset
-
-    // Recompute reference quote for this asset
-    var ref = MarketModel.calculateReferenceQuote(asset, byAsset[asset], Date.now())
-    var byRef = Object.assign({}, referenceQuotes)
-    byRef[asset] = ref
-    referenceQuotes = byRef
-
-    // Batch UI change notification
-    batchUpdateTimer.restart()
-    root.quoteUpdated(asset, getQuote(asset, preferredProvider))
-  }
-
-  // Historical candle request generation tracking & deterministic provider state
-  property int currentCandleRequestId: 0
-  property var pendingCandleRequests: ({})
-  property var candleRequestProviders: ({})
-
-  function getHistoricalCandleProvider(asset, timeframe) {
-    var cat = MarketModel.getCatalogItem(asset)
-    if (cat && cat.assetClass === "stock") {
-      return "yahoo"
-    }
-    var isPerpOnly = (asset === "HYPE" || (cat && cat.instrument && cat.instrument.indexOf("PERP") !== -1))
-    if (isPerpOnly) {
-      return "hyperliquid"
-    }
-    // Spot crypto: Binance is authoritative primary provider
-    return "binance"
-  }
-
-  function handleCandles(providerId, asset, timeframe, list) {
-    var key = asset + "_" + timeframe
-    var expectedInfo = candleRequestProviders[key]
-
-    // Check if response is empty or failed and eligible for Hyperliquid fallback
-    if ((!list || list.length === 0) && providerId === "binance" && expectedInfo && !expectedInfo.isFallback) {
-      var cat = MarketModel.getCatalogItem(asset)
-      if (cat && cat.assetClass === "crypto" && asset !== "HYPE") {
-        console.log("[Candles] Primary provider binance returned empty for " + key + ". Invoking Hyperliquid fallback.")
-        var nextCp = Object.assign({}, candleRequestProviders)
-        nextCp[key] = { provider: "hyperliquid", isFallback: true, reqId: expectedInfo.reqId }
-        candleRequestProviders = nextCp
-        hyperliquidProvider.fetchCandles(asset, timeframe)
-        return
+  function provider(id) { return id === "yahoo" ? yahoo : id === "binance" ? binance : id === "coinbase" ? coinbase : hyperliquid }
+  function handleProviderQuote(id, asset, quote) {
+    if (!isInWatchlist(asset) || quote.provider !== id) return
+    var previous = getProviderQuote(asset, id)
+    if (previous && quote.providerTimestamp < previous.providerTimestamp) return
+    var next = Object.assign({}, quotesByAssetProvider)
+    next[asset] = Object.assign({}, next[asset] || {})
+    next[asset][id] = quote
+    quotesByAssetProvider = next
+    if (id === "yahoo" && !MarketModel.CATALOG_BY_ASSET[asset]) {
+      var item = MarketModel.getCatalogItem(asset)
+      if (item && item.currency !== quote.currency) {
+        MarketModel.registerDynamicInstrument(Object.assign({}, item, { currency: quote.currency }))
+        structuredWatchlist = { version: MarketModel.SCHEMA_VERSION, items: structuredWatchlist.items.map(function(it) { return it.asset === asset ? Object.assign({}, it, { currency: quote.currency, instrument: quote.instrument }) : it; }) }
+        pluginSettings.watchlistJson = MarketModel.serializeWatchlist(structuredWatchlist)
       }
     }
-
-    if (!list || list.length === 0) {
-      console.warn("[Candles] No candle bars returned for " + key + " from " + providerId)
-      return
-    }
-
-    // Populate cache and notify via single canonical reactive path
-    var cMap = Object.assign({}, candleStore)
-    cMap[key] = list
-    candleStore = cMap
-    console.log("[Candles] Received " + list.length + " bars for " + key + " from " + providerId)
-    root.candlesUpdated(asset, timeframe, list)
-    root.updateRevision++ // Single canonical reactive trigger for activeCandles
+    batch.restart()
+    quoteUpdated(asset, getQuote(asset))
   }
-
-  Timer {
-    id: batchUpdateTimer
-    interval: 100
-    repeat: false
-    onTriggered: {
-      root.updateRevision++
-    }
+  function getQuote(asset, id) {
+    if (id && id !== "aggregate") return getProviderQuote(asset, id) || MarketModel.createEmptyQuote(asset, id)
+    return MarketModel.calculateReferenceQuote(asset, quotesByAssetProvider[asset], now)
   }
-
-  function getQuote(asset, provider) {
-    var targetProvider = provider || preferredProvider || "aggregate"
-    if (targetProvider === "aggregate") {
-      return referenceQuotes[asset] || MarketModel.createEmptyQuote(asset, "aggregate")
-    }
-    var byAsset = quotesByAssetProvider[asset]
-    if (byAsset && byAsset[targetProvider]) {
-      return byAsset[targetProvider]
-    }
-    return referenceQuotes[asset] || MarketModel.createEmptyQuote(asset, targetProvider)
+  function getProviderQuote(asset, id) {
+    var q = quotesByAssetProvider[asset]
+    return q && q[id] ? MarketModel.decorateQuote(q[id], now) : null
   }
-
-  function getProviderQuote(asset, providerId) {
-    var byAsset = quotesByAssetProvider[asset]
-    return (byAsset && byAsset[providerId]) ? byAsset[providerId] : null
+  function getProviderError(id) { return provider(id).lastError }
+  function getProviderStatus(id) { return provider(id).status }
+  function setVisibleChart(asset, range) {
+    visibleAsset = asset; visibleRange = range || "1D"
+    if (!history) return
+    if (!asset) { history.clear(); return }
+    fetchCandles(asset, visibleRange)
   }
-
-  function getProviderStatus(providerId) {
-    if (providerId === "binance") return binanceProvider.status
-    if (providerId === "coinbase") return coinbaseProvider.status
-    if (providerId === "hyperliquid") return hyperliquidProvider.status
-    if (providerId === "yahoo") return yahooProvider.status
-    return "UNKNOWN"
+  function fetchCandles(asset, range, force) {
+    if (!history || !isInWatchlist(asset)) return
+    var q = getQuote(asset)
+    history.select(asset, MarketModel.selectedProvider(asset), range || "1D", q.currency, !!force)
   }
-
-  function getCandles(asset, timeframe) {
-    var key = asset + "_" + (timeframe || "1H")
-    return candleStore[key] || []
+  function getCandles(asset, range) {
+    if (!history || !history.visible || history.visible.asset !== asset || history.visible.range !== range) return []
+    var entry = history.entry()
+    return entry ? entry.points : []
   }
-
-  function fetchCandles(asset, timeframe, forceRefresh) {
-    var tf = timeframe || "1H"
-    var key = asset + "_" + tf
-    if (!forceRefresh && candleStore[key] && candleStore[key].length > 0) {
-      root.candlesUpdated(asset, tf, candleStore[key])
-      return
-    }
-
-    root.currentCandleRequestId++
-    var reqId = root.currentCandleRequestId
-    var pMap = Object.assign({}, root.pendingCandleRequests)
-    pMap[key] = reqId
-    root.pendingCandleRequests = pMap
-
-    var provider = getHistoricalCandleProvider(asset, tf)
-    var cpMap = Object.assign({}, root.candleRequestProviders)
-    cpMap[key] = { provider: provider, isFallback: false, reqId: reqId }
-    root.candleRequestProviders = cpMap
-
-    console.log("[Candles] Dispatched request #" + reqId + " for " + key + " to " + provider)
-
-    if (provider === "yahoo") {
-      yahooProvider.fetchCandles(asset, tf)
-    } else if (provider === "hyperliquid") {
-      hyperliquidProvider.fetchCandles(asset, tf)
-    } else if (provider === "binance") {
-      binanceProvider.fetchCandles(asset, tf)
-    }
-  }
-
-  function fetchQuote(asset) {
-    if (!asset) return
-    var cat = MarketModel.getCatalogItem(asset)
-    if (cat && cat.assetClass === "stock") {
-      yahooProvider.fetchQuote(asset)
-    }
-  }
-
-  function searchYahooMarkets(query, callback) {
-    if (yahooProvider) {
-      yahooProvider.searchSymbols(query, callback)
-    } else if (callback) {
-      callback([])
-    }
-  }
-
+  function fetchQuote(asset) { if (MarketModel.selectedProvider(asset) === "yahoo") yahoo.fetchQuote(asset) }
+  function searchYahooMarkets(query, callback) { yahoo.searchSymbols(query, callback) }
   function refresh() {
-    binanceProvider.fetchSnapshot()
-    coinbaseProvider.fetchSnapshot()
-    hyperliquidProvider.fetchMetaAndContexts()
-    yahooProvider.fetchSnapshot()
+    binance.fetchSnapshot(); coinbase.fetchSnapshot(); hyperliquid.fetchSnapshot(); yahoo.fetchSnapshot()
+    if (visibleAsset) fetchCandles(visibleAsset, visibleRange, true)
   }
-
+  Timer { id: batch; interval: 100; onTriggered: root.updateRevision++ }
+  Timer {
+    interval: 1000; running: true; repeat: true
+    onTriggered: { root.now = Date.now(); root.updateRevision++; if (root.history) root.history.expire() }
+  }
+  Timer {
+    interval: 60000; running: root.visibleAsset !== ""; repeat: true
+    onTriggered: root.fetchCandles(root.visibleAsset, root.visibleRange)
+  }
   Component.onCompleted: {
-    console.log("MarketService initialized. Starting market feeds...")
-    loadWatchlist()
-    refresh()
+    history = History.create({
+      enqueue: function(request, callback) { return root.provider(request.provider).client.enqueue(request, callback); },
+      cancel: function(predicate) { [binance, coinbase, hyperliquid, yahoo].forEach(function(p) { p.client.cancel(function(r) { return r.kind === "history" && predicate(r); }); }); }
+    }, function() {
+      root.updateRevision++
+      if (root.history && root.history.visible) root.candlesUpdated(root.history.visible.asset, root.history.visible.range, root.getCandles(root.history.visible.asset, root.history.visible.range))
+    }, Date.now)
+    Qt.callLater(function() { root.persist(MarketModel.deserializeWatchlist(pluginSettings.watchlistJson || String(legacySettings.value("watchlistJson", "")))) })
   }
+  Component.onDestruction: if (history) history.clear()
 }
-

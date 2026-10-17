@@ -1,64 +1,85 @@
-# Financial Data & Market Semantic Specification
+# Market data semantics
 
-This document provides the financial and mathematical specification of every metric displayed by **Omarchy Market**.
+The default price is one selected instrument, used for both the headline and
+history. The legacy `aggregate` API name remains an alias for that selection:
 
----
+| Asset | Source | Instrument | Quote unit | Headline price |
+| --- | --- | --- | --- | --- |
+| Crypto except HYPE | Binance | `ASSETUSDT` Spot | USDT | Last trade |
+| HYPE | Hyperliquid | HYPE Perp | USDC | Mark |
+| Equities / ETFs | Yahoo | Exact Yahoo symbol | Metadata currency, case preserved | Regular-session last |
 
-## 1. Asset & Instrument Taxonomy
+Compact bar prices omit crypto currency codes for readability, without adding
+a dollar sign. Tooltips and detail prices always identify the quote currency.
 
-The plugin tracks 4 core cryptocurrencies across spot and derivative markets without combining incompatible instruments.
+USD and USDT are distinct. There is no price averaging, currency conversion,
+provider failover, or Spot-to-Perp substitution. Comparison rows are independent
+and labelled Spot / Perp / Equity. Hyperliquid candle closes are **trade prices**;
+the HYPE headline is explicitly **mark price**, not an execution price.
 
-| Asset Key | Asset Name | Target Instrument | Default Price Type | Provider Feeds |
-|---|---|---|---|---|
-| `BTC` | Bitcoin | `BTC_USD_SPOT` | `SPOT_LAST` / `SPOT_MID` | Binance (`BTCUSDT`), Coinbase (`BTC-USD`), Hyperliquid (`BTC` perp) |
-| `ETH` | Ethereum | `ETH_USD_SPOT` | `SPOT_LAST` / `SPOT_MID` | Binance (`ETHUSDT`), Coinbase (`ETH-USD`), Hyperliquid (`ETH` perp) |
-| `SOL` | Solana | `SOL_USD_SPOT` | `SPOT_LAST` / `SPOT_MID` | Binance (`SOLUSDT`), Coinbase (`SOL-USD`), Hyperliquid (`SOL` perp) |
-| `HYPE` | Hyperliquid Token | `HYPE_USD_PERP` | `PERP_MID` / `PERP_MARK` | Hyperliquid DEX native (`HYPE`) |
+Yahoo search often omits currency. Such entries can be saved with unknown
+currency; price display waits for valid chart metadata. Three-letter reported
+units are preserved, including `GBp` and `ZAc` (scaled units, not GBP/ZAR).
+Missing or unrecognized currency makes the quote unavailable. Dynamic symbols
+are limited to 24 letters/digits/dots/hyphens. Existing international entries
+previously labelled USD migrate with currency unknown until verified.
 
----
+Hyperliquid's [contract specifications](https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications)
+identify HYPE as USDC-denominated; the other supported crypto perpetuals are
+USDT-denominated with USDC collateral. These are not USD conversions.
 
-## 2. Metric Definitions & Formulas
+Missing prices and metrics are null and displayed as `—`. Zero is meaningful
+for volume and percentage change. Volume is Binance quote turnover in USDT,
+Coinbase base volume in the asset, Hyperliquid notional in the contract denomination, or equity shares.
+Unavailable Hyperliquid high/low are never inferred from the current price.
 
-### A. Live Price (`price`)
-- **Spot Markets (Binance & Coinbase)**: The most recent matched trade execution price (`SPOT_LAST`) in USD or USDT equivalent.
-- **Perpetual Markets (Hyperliquid)**: The real-time order-book midpoint price:
-  $$\text{Mid Price} = \frac{\text{Best Bid} + \text{Best Ask}}{2}$$
-- **Reference Spot Price (Bar / Default Panel Header for BTC, ETH, SOL)**:
-  Arithmetic average across all currently active (`LIVE`) spot feeds (Binance + Coinbase). Stale or offline feeds are automatically excluded.
-  $$\text{Reference Price} = \frac{1}{N} \sum_{i \in \text{Live Spot Feeds}} P_i$$
-- **HYPE Reference Price**: Because HYPE is native to Hyperliquid, its reference price routes directly to the Hyperliquid DEX feed without artificial averaging.
+Crypto changes/high/low/volume cover rolling 24 hours. Equity metrics describe
+the regular session and change versus previous regular close, including during
+pre/post-market. Session status is separately derived from Yahoo's supplied
+trading periods. No local holiday or exchange-hours guesses are used.
 
-### B. 24-Hour Percentage Change (`change24h`)
-- Represents the relative price difference compared to the rolling 24-hour baseline:
-  $$\text{Change \%} = \frac{\text{Current Price} - \text{Price}_{t - 24\text{h}}}{\text{Price}_{t - 24\text{h}}} \times 100$$
-- Displays a leading `▲` (green/teal `#26a69a`) when $\ge 0\%$ and `▼` (red `#ef5350`) when $< 0\%$.
+## Independent status dimensions
 
-### C. 24-Hour High & Low (`high24h`, `low24h`)
-- Rolling maximum and minimum trade execution prices recorded by the underlying exchange over the past 24 hours.
-- Reference view takes $\max(\text{High}_{\text{spot}})$ and $\min(\text{Low}_{\text{spot}})$.
+- **Connection**: WebSocket transport state for Binance/Coinbase; last HTTP
+  outcome for Yahoo/Hyperliquid. A REST quote does not turn a WebSocket green.
+- **Quote age**: Provider event time (or HTTP acquisition time when the provider
+  gives no event timestamp) shown separately from local receipt age.
+- **Freshness**: Recomputed every second. Crypto becomes STALE after 15 seconds
+  without an accepted quote; Yahoo is CURRENT for up to 120 seconds while open
+  or 660 seconds when closed, accommodating polling of up to 20 watched symbols.
+  Older values remain visible as STALE. Missing prices are UNAVAILABLE.
+- **Session**: regular, preMarket, postMarket, closed, or unknown. Closed does
+  not mean disconnected. A CURRENT closed quote can still have an old trade time.
 
-### D. 24-Hour Volume (`volume24h`)
-- Normalized 24-hour notional turnover in US Dollars ($USD$).
-- Compact notation: `$1.27B` ($10^9$), `$45.00M` ($10^6$), `$750.0K` ($10^3$).
+## Chart ranges and cache
 
----
+Longer labels are calendar ranges ending at request time. The equity 1D view
+shows the latest available regular trading session, including while closed;
+crypto 1D remains a continuous 24-hour window:
 
-## 3. Freshness & Stale Data State Machine
+| Range | Calendar span | Binance / Hyperliquid interval | Yahoo interval |
+| --- | --- | --- | --- |
+| 1D | Crypto: 24 hours; equities: latest regular session | 5 minutes | 5 minutes |
+| 1W | 7 days | 1 hour | 30 minutes |
+| 1M | 30 days | 4 hours | 1 hour |
+| 1Y | 365 days | 1 day | 1 day |
 
-Every incoming price payload is stamped with both `providerTimestamp` (exchange clock) and `receivedTimestamp` (local clock $T_{\text{local}}$).
+The actual first/last candle times, local timezone, interval and source appear
+below the chart. Equity candles exclude extended hours. Yahoo 1D uses `range=1d`
+and provider-supplied session boundaries, so a wall-clock cutoff cannot discard
+Friday's candles on a weekend. The session date is labelled explicitly. If Yahoo
+returns an empty success, one `range=5d` recovery selects only the latest session
+with actual candles; it does not display five days under a one-day label. Session
+boundaries (including half days) come from Yahoo, without hardcoded exchange
+hours or holiday guesses. A first-session candle renders as one neutral point;
+no prices are manufactured to fill weekends or gaps. Genuinely empty data retains
+stale cache when available, otherwise displays an explicit provider-data error
+without reserving a blank chart. Chart colour follows
+first-to-last movement in the selected range, independently of headline change.
 
-```
-   (Traffic < 15s)            (15s <= Traffic < 60s)             (Traffic >= 60s)
-+---------------------+     +-----------------------+     +---------------------+
-|        LIVE         | --> |         STALE         | --> |       OFFLINE       |
-|  Green Badge/Teal   |     |   Yellow Badge/Dim    |     |   Red Badge/Muted   |
-+---------------------+     +-----------------------+     +---------------------+
-           ^                            ^                            |
-           |                            |                            |
-           +----------------------------+----------------------------+
-                           (New WebSocket message received)
-```
-
-- **`LIVE`**: $\Delta t < 15,000\text{ ms}$. Data is actively streaming.
-- **`STALE`**: $15,000\text{ ms} \le \Delta t < 60,000\text{ ms}$. WebSocket traffic delayed; REST fallback snapshot is triggered.
-- **`OFFLINE`**: $\Delta t \ge 60,000\text{ ms}$. Feed disconnected; UI clearly marks state as `OFFLINE`.
+Cache entries include source, currency, interval and fetch time. They expire
+after 60 seconds; at most 32 datasets of at most 1000 points each are retained.
+Only an open detail view requests history. Changing view invalidates the old
+generation before cancelling work. The visible chart refreshes every minute;
+Refresh requests both quotes and visible history. Failures preserve existing
+history as stale cache with a retry action. Retry uses the same instrument.

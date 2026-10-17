@@ -1,9 +1,8 @@
 import QtQuick
-import Quickshell
-import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "models/MarketModel.js" as MarketModel
+import "models/History.js" as History
 import "ui"
 
 Panel {
@@ -11,1158 +10,278 @@ Panel {
   moduleName: "io.github.dpr.omarchy-market"
   ipcTarget: "omarchy-market"
   manageIpc: false
-
   property var anchorItem: null
   property var hostWidget: null
   readonly property var barIdentity: hostWidget || root
-
+  property string view: "watchlist"
   property string selectedAsset: "BTC"
-  property string selectedTimeframe: "1H"
-  property bool watchlistManagerOpen: false
+  property string selectedTimeframe: "1D"
+  property bool comparisonOpen: false
   property string searchQuery: ""
-  property var remoteSearchResults: []
+  property var remoteResults: []
+  property string searchState: "idle"
+  property string message: ""
+  property int searchIndex: 0
+  property int searchGeneration: 0
+  property alias contentItem: keyCatcher
+  readonly property var marketService: bar && bar.shell ? bar.shell.serviceFor(moduleName) : null
+  readonly property int revision: marketService ? marketService.updateRevision : 0
+  readonly property var assets: marketService ? marketService.watchlist : []
+  readonly property var activeQuote: marketService && revision >= 0 ? marketService.getQuote(selectedAsset) : MarketModel.createEmptyQuote(selectedAsset)
+  readonly property bool isStock: activeQuote.assetClass === "stock"
+  readonly property var activeCandles: marketService && revision >= 0 ? marketService.getCandles(selectedAsset, selectedTimeframe) : []
+  readonly property string chartState: marketService && marketService.history && revision >= 0 ? marketService.history.state : "unavailable"
+  readonly property string chartError: marketService && marketService.history && revision >= 0 ? marketService.history.error : ""
+  readonly property var chartEntry: marketService && marketService.history && revision >= 0 ? marketService.history.entry() : null
+  readonly property var searchResults: MarketModel.searchCatalog(searchQuery).concat(remoteResults).filter(function(item, index, all) {
+    return all.findIndex(function(other) { return other.asset === item.asset; }) === index;
+  })
 
-  Timer {
-    id: remoteSearchDebounceTimer
-    interval: 300
-    repeat: false
-    onTriggered: {
-      var q = root.searchQuery.trim()
-      if (!q || q.length < 2) {
-        root.remoteSearchResults = []
-        return
-      }
-      if (root.marketService) {
-        root.marketService.searchYahooMarkets(q, function(results) {
-          if (root.searchQuery.trim() === q) {
-            var local = root.marketService.searchMarkets(q)
-            var localSymbols = {}
-            for (var i = 0; i < local.length; i++) {
-              localSymbols[local[i].asset] = true
-            }
-            var uniqueRemote = []
-            for (var j = 0; j < results.length; j++) {
-              var sym = results[j].asset
-              if (!localSymbols[sym]) {
-                uniqueRemote.push(results[j])
-              }
-            }
-            root.remoteSearchResults = uniqueRemote
-          }
-        })
-      }
-    }
+  function open() { view = "watchlist"; controller.show() }
+  function openAsset(asset) {
+    selectedAsset = asset
+    view = "detail"
+    controller.show()
+    syncChart()
   }
-
+  function close() { controller.hide(); view = "watchlist"; searchQuery = "" }
+  function toggle() { opened ? close() : open() }
+  function syncChart() {
+    if (marketService) marketService.setVisibleChart(opened && view === "detail" ? selectedAsset : "", selectedTimeframe)
+  }
+  function showDetail(asset) { selectedAsset = asset; view = "detail"; syncChart() }
+  function back() { view = "watchlist"; searchQuery = ""; keyCatcher.forceActiveFocus() }
+  function addResult(index) {
+    if (!marketService || !searchResults[index]) return
+    var result = marketService.addMarket(searchResults[index])
+    message = result.success ? searchResults[index].asset + " added" : result.reason === "DUPLICATE" ? "Already in watchlist" : result.reason === "MAX_LIMIT" ? "Watchlist limit: 20" : "Unsupported instrument"
+  }
+  function remove(asset) {
+    if (!marketService) return
+    var result = marketService.removeMarket(asset)
+    message = result.success ? asset + " removed" : "Keep at least one instrument"
+  }
+  onOpenedChanged: syncChart()
+  onViewChanged: syncChart()
+  onSelectedTimeframeChanged: syncChart()
   onSearchQueryChanged: {
-    root.remoteSearchResults = []
-    if (root.searchQuery.trim().length >= 2) {
-      remoteSearchDebounceTimer.restart()
-    } else {
-      remoteSearchDebounceTimer.stop()
+    searchGeneration++; remoteResults = []; searchIndex = 0; message = ""
+    searchState = searchQuery.trim().length >= 2 ? "loading" : "idle"
+    debounce.restart()
+  }
+  Timer {
+    id: debounce; interval: 300
+    onTriggered: {
+      if (!root.marketService || root.searchQuery.trim().length < 2) return
+      var generation = root.searchGeneration
+      root.marketService.searchYahooMarkets(root.searchQuery, function(results, error) {
+        if (generation !== root.searchGeneration) return
+        root.remoteResults = results
+        root.searchState = error ? "error" : "ready"
+      })
     }
-  }
-
-  readonly property var marketService: (bar && bar.shell) ? bar.shell.serviceFor("io.github.dpr.omarchy-market") : null
-  readonly property int updateRevision: marketService ? marketService.updateRevision : 0
-  readonly property var assets: (marketService && marketService.watchlist && marketService.watchlist.length > 0) ? marketService.watchlist : ["BTC", "ETH", "SOL", "HYPE"]
-  readonly property var structuredWatchlist: (marketService && marketService.structuredWatchlist) ? marketService.structuredWatchlist : MarketModel.createDefaultWatchlist()
-
-  readonly property var activeQuote: (marketService && updateRevision >= 0) ? marketService.getQuote(selectedAsset, "aggregate") : MarketModel.createEmptyQuote(selectedAsset, "aggregate")
-  readonly property var binanceQuote: (marketService && updateRevision >= 0) ? marketService.getProviderQuote(selectedAsset, "binance") : null
-  readonly property var coinbaseQuote: (marketService && updateRevision >= 0) ? marketService.getProviderQuote(selectedAsset, "coinbase") : null
-  readonly property var hyperliquidQuote: (marketService && updateRevision >= 0) ? marketService.getProviderQuote(selectedAsset, "hyperliquid") : null
-  readonly property var yahooQuote: (marketService && updateRevision >= 0) ? marketService.getProviderQuote(selectedAsset, "yahoo") : null
-  readonly property var activeCandles: (marketService && updateRevision >= 0) ? marketService.getCandles(selectedAsset, selectedTimeframe) : []
-
-  readonly property var selectedCatItem: MarketModel.getCatalogItem(selectedAsset)
-  readonly property bool isStock: selectedCatItem && selectedCatItem.assetClass === "stock"
-  readonly property bool isSelectedInWatchlist: marketService ? marketService.isInWatchlist(selectedAsset) : (assets.indexOf(selectedAsset) !== -1)
-
-  function open() {
-    root.controller.show()
-    if (marketService) {
-      marketService.fetchQuote(selectedAsset)
-      marketService.fetchCandles(selectedAsset, selectedTimeframe)
-      marketService.refresh()
-    }
-  }
-
-  function close() {
-    root.watchlistManagerOpen = false
-    root.searchQuery = ""
-    root.controller.hide()
-  }
-
-  function toggle() {
-    if (root.opened) root.close()
-    else root.open()
-  }
-
-  onSelectedAssetChanged: {
-    if (marketService) {
-      marketService.fetchQuote(selectedAsset)
-      marketService.fetchCandles(selectedAsset, selectedTimeframe)
-    }
-  }
-
-  onSelectedTimeframeChanged: {
-    if (marketService) marketService.fetchCandles(selectedAsset, selectedTimeframe)
   }
 
   KeyboardPanel {
-    id: keyboardPanel
+    id: popup
     anchorItem: root.anchorItem || root
     bar: root.bar
     owner: root
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: Style.space(360)
-    contentHeight: contentColumn.implicitHeight + Style.space(48)
+    contentWidth: Math.min(Style.space(420), (popup.screen ? popup.screen.width : 1024) - Style.space(40))
+    contentHeight: Math.min(column.implicitHeight + Style.space(40), (popup.screen ? popup.screen.height : 768) - Style.space(100))
 
-    PanelKeyCatcher {
+    FocusScope {
       id: keyCatcher
       anchors.fill: parent
-      onCloseRequested: {
-        if (root.watchlistManagerOpen) {
-          root.watchlistManagerOpen = false
-          root.searchQuery = ""
-        } else {
-          root.close()
-        }
+      focus: true
+      Keys.onEscapePressed: { if (root.view !== "watchlist") root.back(); else root.close() }
+      Keys.onPressed: function(event) {
+        if (!search.activeFocus && (event.key === Qt.Key_R)) { if (root.marketService) root.marketService.refresh(); event.accepted = true }
+        if (!search.activeFocus && event.key === Qt.Key_Slash) { root.view = "manage"; search.forceActiveFocus(); event.accepted = true }
       }
-      onTabRequested: function(direction) {
-        if (root.watchlistManagerOpen) return
-        var idx = root.assets.indexOf(root.selectedAsset)
-        if (idx !== -1) {
-          var nextIdx = (idx + direction + root.assets.length) % root.assets.length
-          root.selectedAsset = root.assets[nextIdx]
-        }
-      }
-      onTextKey: function(t) {
-        if (!root.watchlistManagerOpen && (t === "r" || t === "R")) {
-          if (root.marketService) root.marketService.refresh()
-        }
-      }
-
-      Column {
-        id: contentColumn
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.margins: Style.space(4)
-        spacing: Style.space(12)
-
-        // 1. Asset Switcher Header (Horizontally Scrollable Tabs + Edit Control)
-        Row {
-          width: parent.width
-          height: Style.space(30)
-          spacing: Style.space(6)
-
-          // Scrollable Tabs Container
-          Item {
-            width: parent.width - editBtn.width - Style.space(6)
-            height: parent.height
-
-            Flickable {
-              id: tabsFlickable
-              anchors.fill: parent
-              contentWidth: tabsRow.implicitWidth
-              contentHeight: height
-              boundsBehavior: Flickable.StopAtBounds
-              clip: true
-
-              Row {
-                id: tabsRow
-                height: parent.height
-                spacing: Style.space(5)
-
-                Repeater {
-                  model: root.assets
-
-                  Item {
-                    id: tabItem
-                    width: Math.max(Style.space(54), tabText.implicitWidth + Style.space(16))
-                    height: Style.space(28)
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    readonly property bool isCurrent: root.selectedAsset === modelData
-
-                    HoverHandler { id: tabHover }
-
-                    BorderSurface {
-                      anchors.fill: parent
-                      radius: Style.cornerRadius
-                      color: tabItem.isCurrent ? Style.selectionFillAlpha : (tabHover.hovered ? Style.hoverFillAlpha : Style.normalFillAlpha)
-                      borderSpec: Border.controlSpec(tabItem.isCurrent ? "selected" : (tabHover.hovered ? "hover" : "normal"), Color.foreground, Color.accent)
-
-                      Text {
-                        id: tabText
-                        anchors.centerIn: parent
-                        text: modelData
-                        textFormat: Text.PlainText
-                        font.family: Style.font.family
-                        font.pixelSize: Style.font.bodySmall
-                        font.bold: tabItem.isCurrent
-                        color: tabItem.isCurrent ? Color.accent : (tabHover.hovered ? Color.foreground : Util.alpha(Color.foreground, 0.85))
-                      }
-
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                          root.selectedAsset = modelData
-                          root.watchlistManagerOpen = false
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-
-            // Left scroll affordance fade
-            Rectangle {
-              id: leftTabFade
-              anchors.left: parent.left
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              width: Style.space(16)
-              z: 2
-              visible: tabsFlickable.contentX > 2
-              gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Color.background }
-                GradientStop { position: 1.0; color: "transparent" }
-              }
-            }
-
-            // Right scroll affordance fade
-            Rectangle {
-              id: rightTabFade
-              anchors.right: parent.right
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              width: Style.space(16)
-              z: 2
-              visible: (tabsFlickable.contentWidth > tabsFlickable.width) &&
-                       (tabsFlickable.contentX < tabsFlickable.contentWidth - tabsFlickable.width - 2)
-              gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 1.0; color: Color.background }
-              }
-            }
-          }
-
-          // Small Edit / Settings Control strictly adjacent to asset tabs
-          Item {
-            id: editBtn
-            width: Style.space(28)
-            height: Style.space(28)
-            anchors.verticalCenter: parent.verticalCenter
-
-            HoverHandler { id: editHover }
-
-            BorderSurface {
-              anchors.fill: parent
-              radius: Style.cornerRadius
-              color: root.watchlistManagerOpen ? Style.selectionFillAlpha : (editHover.hovered ? Style.hoverFillAlpha : Style.normalFillAlpha)
-              borderSpec: Border.controlSpec(root.watchlistManagerOpen ? "selected" : (editHover.hovered ? "hover" : "normal"), Color.foreground, Color.accent)
-
-              Text {
-                anchors.centerIn: parent
-                text: "⚙"
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
-                color: root.watchlistManagerOpen ? Color.accent : (editHover.hovered ? Color.foreground : Util.alpha(Color.foreground, 0.8))
-              }
-
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  root.watchlistManagerOpen = !root.watchlistManagerOpen
-                  if (root.watchlistManagerOpen) {
-                    root.searchQuery = ""
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // -------------------------------------------------------------
-        // VIEW A: WATCHLIST MANAGER (Native Quattro-styled Overlay View)
-        // -------------------------------------------------------------
+      Flickable {
+        id: scroller
+        anchors.fill: parent
+        contentHeight: column.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
         Column {
-          id: watchlistManagerView
-          width: parent.width
+          id: column
+          width: scroller.width
           spacing: Style.space(10)
-          visible: root.watchlistManagerOpen
-
-          // Manager Header (Title, Counter, Close)
-          Row {
-            width: parent.width
-            height: Style.space(24)
-
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: "WATCHLIST"
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              color: Color.foreground
-            }
-
-            Item {
-              width: Math.max(1, parent.width - parent.children[0].width - parent.children[2].width - parent.children[3].width)
-              height: 1
-            }
-
-            // Counter Badge (e.g. "4 / 20")
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.assets.length + " / 20"
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              color: Color.muted
-            }
-
-            // Close manager button
-            Item {
-              width: Style.space(24)
-              height: Style.space(24)
-              anchors.verticalCenter: parent.verticalCenter
-
-              HoverHandler { id: closeHover }
-
-              Text {
-                anchors.centerIn: parent
-                text: "✕"
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                color: closeHover.hovered ? Color.foreground : Color.muted
-              }
-
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  root.watchlistManagerOpen = false
-                  root.searchQuery = ""
-                }
-              }
-            }
-          }
-
-          // Search / Add Box
-          BorderSurface {
-            width: parent.width
-            height: Style.space(32)
-            radius: Style.cornerRadius
-            color: Style.normalFillAlpha
-            borderSpec: Border.controlSpec(searchInput.activeFocus ? "selected" : "normal", Color.foreground, Color.accent)
-
-            Row {
-              anchors.fill: parent
-              anchors.leftMargin: Style.space(8)
-              anchors.rightMargin: Style.space(8)
-              spacing: Style.space(6)
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "🔍"
-                font.pixelSize: Style.font.caption
-                color: Color.muted
-              }
-
-              TextInput {
-                id: searchInput
-                width: parent.width - Style.space(24)
-                anchors.verticalCenter: parent.verticalCenter
-                clip: true
-                font.family: Style.font.family
-                font.pixelSize: Style.font.bodySmall
-                color: Color.foreground
-                selectionColor: Color.accent
-                selectedTextColor: Color.foreground
-
-                Text {
-                  anchors.fill: parent
-                  text: "Search market or alias (e.g. AAPL, dogecoin, NVDA)..."
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.bodySmall
-                  color: Color.muted
-                  visible: !searchInput.text && !searchInput.activeFocus
-                }
-
-                onTextChanged: root.searchQuery = searchInput.text.trim()
-              }
-            }
-          }
-
-          // Quick-Add Stock Suggestions (when search is empty)
-          Column {
+          Flow {
             width: parent.width
             spacing: Style.space(6)
-            visible: root.searchQuery.length === 0
-
-            Text {
-              text: "FEATURED STOCKS"
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              color: Color.muted
-            }
-
-            Flow {
-              width: parent.width
-              spacing: Style.space(6)
-
-              Repeater {
-                model: ["AAPL", "NVDA", "MSFT", "TSLA", "AMZN", "GOOGL", "META", "AMD"]
-
-                Item {
-                  width: chipSurface.implicitWidth
-                  height: Style.space(24)
-
-                  readonly property string chipAsset: modelData
-                  readonly property var catItem: MarketModel.getCatalogItem(chipAsset)
-                  readonly property bool alreadyInWatchlist: root.marketService ? root.marketService.isInWatchlist(chipAsset) : (root.assets.indexOf(chipAsset) !== -1)
-                  readonly property bool isFull: root.assets.length >= 20
-
-                  HoverHandler { id: chipHover }
-
-                  BorderSurface {
-                    id: chipSurface
-                    anchors.fill: parent
-                    implicitWidth: chipRow.implicitWidth + Style.space(12)
-                    radius: Style.space(4)
-                    color: alreadyInWatchlist ? Qt.rgba(0.15, 0.65, 0.60, 0.15) : (chipHover.hovered ? Style.hoverFillAlpha : Style.normalFillAlpha)
-                    borderSpec: Border.flat(alreadyInWatchlist ? "#26a69a" : (chipHover.hovered ? Color.accent : Color.muted), 1)
-
-                    Row {
-                      id: chipRow
-                      anchors.centerIn: parent
-                      spacing: Style.space(4)
-
-                      Text {
-                        text: chipAsset
-                        font.family: Style.font.family
-                        font.pixelSize: Style.font.caption
-                        font.bold: true
-                        color: alreadyInWatchlist ? "#26a69a" : Color.foreground
-                        anchors.verticalCenter: parent.verticalCenter
-                      }
-
-                      Text {
-                        text: alreadyInWatchlist ? "✓" : "+"
-                        font.family: Style.font.family
-                        font.pixelSize: Style.font.caption
-                        font.bold: true
-                        color: alreadyInWatchlist ? "#26a69a" : Color.accent
-                        anchors.verticalCenter: parent.verticalCenter
-                      }
-                    }
-
-                    MouseArea {
-                      anchors.fill: parent
-                      enabled: !alreadyInWatchlist && !isFull
-                      cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                      onClicked: {
-                        if (root.marketService) {
-                          root.marketService.addMarket(chipAsset)
-                          root.selectedAsset = chipAsset
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
+            MarketAction { text: root.view === "watchlist" ? "Watchlist" : "← Back"; enabled: root.view !== "watchlist"; onClicked: root.back() }
+            MarketAction { text: "Manage"; visible: root.view !== "manage"; onClicked: { root.view = "manage"; search.forceActiveFocus() } }
+            MarketAction { text: "Refresh"; onClicked: if (root.marketService) root.marketService.refresh() }
           }
-
-          // Search Results Dropdown / List (when typing)
           Column {
-            width: parent.width
-            spacing: Style.space(4)
-            visible: root.searchQuery.length > 0
-
-            readonly property var localResults: (root.marketService && root.searchQuery) ? root.marketService.searchMarkets(root.searchQuery) : MarketModel.searchCatalog(root.searchQuery)
-            readonly property var results: localResults.concat(root.remoteSearchResults)
-
-            Text {
-              text: "SEARCH RESULTS"
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              color: Color.muted
-              visible: parent.results.length > 0
-            }
-
-            Text {
-              text: "No supported markets found"
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              color: Color.muted
-              visible: parent.results.length === 0
-            }
-
+            visible: root.view === "watchlist"
+            width: parent.width; spacing: Style.space(5)
             Repeater {
-              model: parent.results
-
-              Item {
-                width: parent.width
-                height: Style.space(30)
-
-                readonly property var catItem: modelData
-                readonly property bool alreadyInWatchlist: root.marketService ? root.marketService.isInWatchlist(catItem.asset) : (root.assets.indexOf(catItem.asset) !== -1)
-                readonly property bool isFull: root.assets.length >= 20
-
-                HoverHandler { id: searchItemHover }
-
-                BorderSurface {
-                  anchors.fill: parent
-                  radius: Style.cornerRadius
-                  color: searchItemHover.hovered ? Style.hoverFillAlpha : Style.normalFillAlpha
-                  borderSpec: Border.controlSpec("normal", Color.foreground, Color.accent)
-
-                  Row {
-                    anchors.left: parent.left
-                    anchors.leftMargin: Style.space(8)
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.space(6)
-
-                    Text {
-                      text: catItem.asset
-                      textFormat: Text.PlainText
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.bodySmall
-                      font.bold: true
-                      color: Color.foreground
-                    }
-
-                    Text {
-                      text: "• " + catItem.name
-                      textFormat: Text.PlainText
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.caption
-                      color: Color.muted
-                    }
-
-                    Text {
-                      text: "• " + (catItem.assetClass === "stock" ? "STOCK" : "CRYPTO")
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.caption
-                      font.bold: true
-                      color: catItem.assetClass === "stock" ? Color.accent : Color.muted
-                    }
-                  }
-
-                  // Action Badge (+ Add / Added / Full)
-                  BorderSurface {
-                    anchors.right: parent.right
-                    anchors.rightMargin: Style.space(6)
-                    anchors.verticalCenter: parent.verticalCenter
-                    implicitWidth: actionText.implicitWidth + Style.space(12)
-                    implicitHeight: Style.space(22)
-                    radius: Style.space(4)
-                    color: alreadyInWatchlist ? Qt.rgba(0.15, 0.65, 0.60, 0.15) : (isFull ? Style.normalFillAlpha : Style.selectionFillAlpha)
-                    borderSpec: Border.flat(alreadyInWatchlist ? "#26a69a" : (isFull ? Color.muted : Color.accent), 1)
-
-                    Text {
-                      id: actionText
-                      anchors.centerIn: parent
-                      text: alreadyInWatchlist ? "Added ✓" : (isFull ? "Full (20)" : "+ Add")
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.caption
-                      font.bold: true
-                      color: alreadyInWatchlist ? "#26a69a" : (isFull ? Color.muted : Color.foreground)
-                    }
-
-                    MouseArea {
-                      anchors.fill: parent
-                      enabled: !alreadyInWatchlist && !isFull
-                      cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                      onClicked: {
-                        if (root.marketService) {
-                          root.marketService.addMarket(catItem.asset)
-                          root.selectedAsset = catItem.asset
-                          searchInput.text = ""
-                          root.searchQuery = ""
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-
-            PanelSeparator { width: parent.width }
-          }
-
-          // Active Watchlist Items (Reorder & Delete List)
-          Column {
-            width: parent.width
-            spacing: Style.space(6)
-
-            Text {
-              text: "ACTIVE WATCHLIST"
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              color: Color.muted
-            }
-
-            // Scrollable List of Markets
-            ListView {
-              id: watchlistListView
-              width: parent.width
-              height: Math.min(Style.space(220), count * Style.space(36))
               model: root.assets
-              clip: true
-              boundsBehavior: Flickable.StopAtBounds
-              spacing: Style.space(4)
-
-              delegate: Item {
-                width: watchlistListView.width
-                height: Style.space(32)
-
-                readonly property string assetName: modelData
-                readonly property var catItem: MarketModel.getCatalogItem(assetName) || { name: assetName, instrument: "SPOT" }
-                readonly property bool isSelected: root.selectedAsset === assetName
-
-                HoverHandler { id: rowHover }
-
-                BorderSurface {
-                  anchors.fill: parent
-                  radius: Style.cornerRadius
-                  color: isSelected ? Style.selectionFillAlpha : (rowHover.hovered ? Style.hoverFillAlpha : Style.normalFillAlpha)
-                  borderSpec: Border.controlSpec(isSelected ? "selected" : "normal", Color.foreground, Color.accent)
-
-                  // Left: Asset Symbol & Name
-                  Row {
-                    anchors.left: parent.left
-                    anchors.leftMargin: Style.space(8)
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.space(6)
-
-                    Text {
-                      text: "★ " + assetName
-                      textFormat: Text.PlainText
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.bodySmall
-                      font.bold: true
-                      color: isSelected ? Color.accent : Color.foreground
-                    }
-
-                    Text {
-                      text: "• " + catItem.name
-                      textFormat: Text.PlainText
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.caption
-                      color: Color.muted
-                    }
-                  }
-
-                  // Right: Action Buttons (↑, ↓, Delete)
-                  Row {
-                    anchors.right: parent.right
-                    anchors.rightMargin: Style.space(6)
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.space(4)
-
-                    // Move Up Button
-                    Item {
-                      width: Style.space(22)
-                      height: Style.space(22)
-                      visible: index > 0
-
-                      HoverHandler { id: upHover }
-                      BorderSurface {
-                        anchors.fill: parent
-                        radius: Style.space(4)
-                        color: upHover.hovered ? Style.hoverFillAlpha : "transparent"
-                        borderSpec: Border.flat(upHover.hovered ? Color.accent : Color.muted, 1)
-
-                        Text {
-                          anchors.centerIn: parent
-                          text: "↑"
-                          font.pixelSize: Style.font.caption
-                          font.bold: true
-                          color: upHover.hovered ? Color.foreground : Color.muted
-                        }
-                      }
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                          if (root.marketService) root.marketService.reorderMarket(index, index - 1)
-                        }
-                      }
-                    }
-
-                    // Move Down Button
-                    Item {
-                      width: Style.space(22)
-                      height: Style.space(22)
-                      visible: index < root.assets.length - 1
-
-                      HoverHandler { id: downHover }
-                      BorderSurface {
-                        anchors.fill: parent
-                        radius: Style.space(4)
-                        color: downHover.hovered ? Style.hoverFillAlpha : "transparent"
-                        borderSpec: Border.flat(downHover.hovered ? Color.accent : Color.muted, 1)
-
-                        Text {
-                          anchors.centerIn: parent
-                          text: "↓"
-                          font.pixelSize: Style.font.caption
-                          font.bold: true
-                          color: downHover.hovered ? Color.foreground : Color.muted
-                        }
-                      }
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                          if (root.marketService) root.marketService.reorderMarket(index, index + 1)
-                        }
-                      }
-                    }
-
-                    // Delete Button
-                    Item {
-                      width: Style.space(22)
-                      height: Style.space(22)
-                      visible: root.assets.length > 1
-
-                      HoverHandler { id: delHover }
-                      BorderSurface {
-                        anchors.fill: parent
-                        radius: Style.space(4)
-                        color: delHover.hovered ? Qt.rgba(0.93, 0.32, 0.31, 0.25) : "transparent"
-                        borderSpec: Border.flat(delHover.hovered ? "#ef5350" : Color.muted, 1)
-
-                        Text {
-                          anchors.centerIn: parent
-                          text: "✕"
-                          font.pixelSize: Style.font.caption
-                          font.bold: true
-                          color: delHover.hovered ? "#ef5350" : Color.muted
-                        }
-                      }
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                          var targetDel = assetName
-                          if (root.marketService) {
-                            root.marketService.removeMarket(targetDel)
-                            if (root.selectedAsset === targetDel) {
-                              root.selectedAsset = root.assets[0] || "BTC"
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-
-                  // Click row to select
-                  MouseArea {
-                    anchors.left: parent.left
-                    anchors.right: parent.children[1].left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                      root.selectedAsset = assetName
-                      root.watchlistManagerOpen = false
-                    }
-                  }
-                }
+              WatchRow {
+                required property string modelData
+                width: column.width
+                asset: modelData
+                quote: root.marketService && root.revision >= 0 ? root.marketService.getQuote(asset) : MarketModel.createEmptyQuote(asset)
+                onClicked: root.showDetail(asset)
               }
             }
-          }
-        }
-
-        // -------------------------------------------------------------
-        // VIEW B: ASSET DETAIL TERMINAL (Main View)
-        // -------------------------------------------------------------
-        Column {
-          id: assetDetailView
-          width: parent.width
-          spacing: Style.space(12)
-          visible: !root.watchlistManagerOpen
-
-          // 2. Asset Header (Symbol, Name, Large Formatted Price, 24h Change Pill, + Add to Watchlist action)
-          Row {
-            width: parent.width
-            spacing: Style.space(12)
-
-            Column {
-              width: parent.width - changePill.width - Style.space(12)
-              spacing: Style.space(2)
-
-              Row {
-                spacing: Style.space(6)
-                Text {
-                  text: root.activeQuote.symbol
-                  textFormat: Text.PlainText
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  color: Color.muted
-                }
-                Text {
-                  text: "• " + root.activeQuote.name
-                  textFormat: Text.PlainText
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                  color: Color.muted
-                }
-
-                // "+ Add to Watchlist" button on detail panel if not in watchlist
-                BorderSurface {
-                  visible: !root.isSelectedInWatchlist && root.assets.length < 20
-                  implicitWidth: addDetailText.implicitWidth + Style.space(8)
-                  implicitHeight: Style.space(18)
-                  radius: Style.space(3)
-                  color: Style.selectionFillAlpha
-                  borderSpec: Border.flat(Color.accent, 1)
-
-                  Text {
-                    id: addDetailText
-                    anchors.centerIn: parent
-                    text: "+ Add to Watchlist"
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.caption
-                    font.bold: true
-                    color: Color.accent
-                  }
-
-                  MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                      if (root.marketService) root.marketService.addMarket(root.selectedAsset)
-                    }
-                  }
-                }
-              }
-
-              Text {
-                text: MarketModel.formatPrice(root.activeQuote.price)
-                font.family: Style.font.family
-                font.pixelSize: Style.space(24)
-                font.bold: true
-                color: Color.foreground
-              }
-            }
-
-            // 24h Change & Freshness Pill
-            BorderSurface {
-              id: changePill
-              anchors.verticalCenter: parent.verticalCenter
-              implicitWidth: pillColumn.implicitWidth + Style.space(14)
-              implicitHeight: pillColumn.implicitHeight + Style.space(8)
-              radius: Style.cornerRadius
-              color: root.activeQuote.change24h >= 0 ? Qt.rgba(0.15, 0.65, 0.60, 0.15) : Qt.rgba(0.93, 0.32, 0.31, 0.15)
-              borderSpec: Border.flat(root.activeQuote.change24h >= 0 ? "#26a69a" : "#ef5350", 1)
-
-              Column {
-                id: pillColumn
-                anchors.centerIn: parent
-                spacing: Style.space(2)
-
-                Row {
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  spacing: Style.space(4)
-
-                  Text {
-                    text: root.activeQuote.change24h >= 0 ? "▲" : "▼"
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.caption
-                    color: root.activeQuote.change24h >= 0 ? "#26a69a" : "#ef5350"
-                  }
-
-                  Text {
-                    text: MarketModel.formatPercentage(root.activeQuote.change24h)
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.body
-                    font.bold: true
-                    color: root.activeQuote.change24h >= 0 ? "#26a69a" : "#ef5350"
-                  }
-                }
-
-                Text {
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  text: root.activeQuote.freshness
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  color: root.activeQuote.freshness === "LIVE" ? "#26a69a" : (root.activeQuote.freshness === "STALE" ? "#fbc02d" : "#ef5350")
-                }
-              }
-            }
-          }
-
-          PanelSeparator { width: parent.width }
-
-          // 3. Sparkline Chart + Timeframe Selector
-          Column {
-            width: parent.width
-            spacing: Style.space(6)
-
-            Row {
-              width: parent.width
-
-              Text {
-                text: "PRICE ACTION"
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                color: Color.muted
-              }
-
-              Item { width: Math.max(1, parent.width - parent.children[0].width - tfRow.width); height: 1 }
-
-              Row {
-                id: tfRow
-                spacing: Style.space(4)
-
-                Repeater {
-                  model: ["1H", "4H", "1D", "1W"]
-
-                  Item {
-                    id: tfItem
-                    width: Style.space(30)
-                    height: Style.space(22)
-
-                    readonly property bool isSelected: root.selectedTimeframe === modelData
-                    HoverHandler { id: tfHover }
-
-                    BorderSurface {
-                      anchors.fill: parent
-                      radius: Style.cornerRadius
-                      color: tfItem.isSelected ? Style.selectionFillAlpha : (tfHover.hovered ? Style.hoverFillAlpha : "transparent")
-                      borderSpec: Border.controlSpec(tfItem.isSelected ? "selected" : (tfHover.hovered ? "hover" : "normal"), Color.foreground, Color.accent)
-
-                      Text {
-                        anchors.centerIn: parent
-                        text: modelData
-                        font.family: Style.font.family
-                        font.pixelSize: Style.font.caption
-                        font.bold: tfItem.isSelected
-                        color: tfItem.isSelected ? Color.accent : (tfHover.hovered ? Color.foreground : Util.alpha(Color.foreground, 0.8))
-                      }
-
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.selectedTimeframe = modelData
-                      }
-                    }
-                  }
-                }
-              }
-            }
-
-            SparklineChart {
-              width: parent.width
-              height: Style.space(110)
-              points: root.activeCandles
-              isPositive: root.activeQuote.change24h >= 0
-            }
-          }
-
-          PanelSeparator { width: parent.width }
-
-          // 4. 24H Key Statistics
-          Row {
-            width: parent.width
-
-            Column {
-              width: parent.width / 3
-              spacing: Style.space(2)
-              Text { text: "24H HIGH"; font.pixelSize: Style.font.caption; font.bold: true; color: Color.muted }
-              Text { text: MarketModel.formatPrice(root.activeQuote.high24h); font.pixelSize: Style.font.body; font.bold: true; color: Color.foreground }
-            }
-
-            Column {
-              width: parent.width / 3
-              spacing: Style.space(2)
-              Text { text: "24H LOW"; font.pixelSize: Style.font.caption; font.bold: true; color: Color.muted }
-              Text { text: MarketModel.formatPrice(root.activeQuote.low24h); font.pixelSize: Style.font.body; font.bold: true; color: Color.foreground }
-            }
-
-            Column {
-              width: parent.width / 3
-              spacing: Style.space(2)
-              Text { text: "24H VOLUME"; font.pixelSize: Style.font.caption; font.bold: true; color: Color.muted }
-              Text { text: MarketModel.formatVolume(root.activeQuote.volume24h); font.pixelSize: Style.font.body; font.bold: true; color: Color.foreground }
-            }
-          }
-
-          PanelSeparator { width: parent.width }
-
-          // 5. Multi-Exchange Comparison Table
-          Column {
-            width: parent.width
-            spacing: Style.space(6)
-
             Text {
-              text: "EXCHANGES & MARKETS"
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              color: Color.muted
+              width: parent.width; wrapMode: Text.Wrap
+              text: "Select a market for history. Prices retain their source currency."
+              font.pixelSize: Style.font.caption; color: Color.muted
             }
-
-            // Exchange Rows
-            Column {
-              width: parent.width
+          }
+          Column {
+            visible: root.view === "detail"
+            width: parent.width; spacing: Style.space(9)
+            Text {
+              width: parent.width; elide: Text.ElideRight
+              objectName: "detail-ticker"
+              text: root.selectedAsset
+              font.family: Style.font.family; font.pixelSize: Style.font.body * 1.6; font.bold: true; color: Color.foreground
+            }
+            Flow {
+              width: parent.width; spacing: Style.space(8)
+              Text {
+                id: headlinePrice
+                objectName: "detail-price"
+                width: Math.min(implicitWidth, parent.width); elide: Text.ElideRight
+                text: MarketModel.formatPrice(root.activeQuote.price, undefined, root.activeQuote.currency, !root.isStock)
+                Accessible.name: MarketModel.formatPrice(root.activeQuote.price, undefined, root.activeQuote.currency)
+                font.family: Style.font.family; font.pixelSize: Style.font.body * 2; font.bold: true; color: Color.foreground
+              }
+              Text {
+                objectName: "detail-currency"
+                height: headlinePrice.height; verticalAlignment: Text.AlignVCenter
+                text: root.activeQuote.currency || ""
+                font.family: Style.font.family; font.pixelSize: Style.font.caption; color: Util.alpha(Color.foreground, 0.75)
+              }
+            }
+            Text {
+              width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+              text: MarketModel.providerDisplayName(root.activeQuote.provider) + " · " + (root.activeQuote.currency || "Currency pending") + " · " + root.activeQuote.priceType + "\n" + root.activeQuote.symbol + " · " + root.activeQuote.freshness + " · Quote " + MarketModel.formatAge(root.activeQuote.providerTimestamp, root.marketService ? root.marketService.now : Date.now()) + "\nConnection: " + (root.marketService && root.revision >= 0 ? root.marketService.getProviderStatus(root.activeQuote.provider) : "DISCONNECTED") + " · Received " + MarketModel.formatAge(root.activeQuote.receivedTimestamp, root.marketService ? root.marketService.now : Date.now()) + (root.marketService && root.marketService.getProviderError(root.activeQuote.provider) ? "\n" + root.marketService.getProviderError(root.activeQuote.provider) : "")
+              font.family: Style.font.family; font.pixelSize: Style.font.caption; color: Util.alpha(Color.foreground, 0.75)
+            }
+            Text {
+              width: parent.width; wrapMode: Text.Wrap
+              text: (root.isStock ? "Regular session · " + root.activeQuote.marketState + " · vs previous close: " : "Rolling 24 hours: ") + MarketModel.formatPercentage(root.activeQuote.change24h)
+              font.pixelSize: Style.font.bodySmall
+              color: root.activeQuote.change24h === null ? Color.muted : root.activeQuote.change24h >= 0 ? "#26a69a" : "#ef5350"
+            }
+            Text {
+              width: parent.width; wrapMode: Text.Wrap
+              text: (root.isStock ? "Session" : "24h") + " high " + MarketModel.formatPrice(root.activeQuote.high24h, undefined, root.activeQuote.currency) + " · Low " + MarketModel.formatPrice(root.activeQuote.low24h, undefined, root.activeQuote.currency) + "\nVolume " + MarketModel.formatVolume(root.activeQuote.volume24h, root.activeQuote.volumeUnit)
+              font.pixelSize: Style.font.caption; color: Color.foreground
+            }
+            Row {
               spacing: Style.space(5)
-
-              // Yahoo Row (for Stocks)
-              Item {
-                width: parent.width
-                height: yahooLeft.implicitHeight
-                visible: root.isStock
-
-                Row {
-                  id: yahooLeft
-                  anchors.left: parent.left
-                  anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.space(6)
-                  Rectangle {
-                    width: Style.space(8); height: Style.space(8); radius: Style.space(4)
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: root.yahooQuote ? "#26a69a" : Color.muted
-                  }
-                  Text {
-                    text: "Yahoo (" + (root.activeQuote.marketState === "regular" ? "Regular" : (root.activeQuote.marketState === "preMarket" ? "Pre-Mkt" : (root.activeQuote.marketState === "postMarket" ? "Post-Mkt" : "Closed"))) + ")"
-                    width: Style.space(120)
-                    font.pixelSize: Style.font.caption
-                    color: Color.foreground
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-                  Text {
-                    text: root.yahooQuote ? MarketModel.formatPrice(root.yahooQuote.price) : "--"
-                    font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-                }
-
-                Text {
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: root.yahooQuote ? MarketModel.formatPercentage(root.yahooQuote.change24h) : ""
-                  font.pixelSize: Style.font.caption
-                  color: (root.yahooQuote && root.yahooQuote.change24h >= 0) ? "#26a69a" : "#ef5350"
+              Repeater {
+                model: History.RANGES
+                MarketAction {
+                  required property string modelData
+                  text: modelData; selected: root.selectedTimeframe === modelData
+                  onClicked: root.selectedTimeframe = modelData
                 }
               }
-
-              // Binance Row (for Crypto)
-              Item {
-                width: parent.width
-                height: binanceLeft.implicitHeight
-                visible: !root.isStock
-                
-                Row {
-                  id: binanceLeft
-                  anchors.left: parent.left
-                  anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.space(6)
-                  Rectangle {
-                    width: Style.space(8); height: Style.space(8); radius: Style.space(4)
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: root.binanceQuote ? "#26a69a" : Color.muted
-                  }
-                  Text { text: "Binance (Spot)"; width: Style.space(110); font.pixelSize: Style.font.caption; color: Color.foreground; anchors.verticalCenter: parent.verticalCenter }
-                  Text {
-                    text: root.binanceQuote ? MarketModel.formatPrice(root.binanceQuote.price) : "--"
-                    font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-                }
-                
+            }
+            SparklineChart {
+              objectName: "market-chart"
+              visible: root.activeCandles.length > 0
+              width: parent.width; height: Style.space(140)
+              points: root.activeCandles
+              currency: root.chartEntry ? root.chartEntry.currency : root.activeQuote.currency || ""
+              isPositive: root.activeCandles.length >= 2 ? root.activeCandles[root.activeCandles.length - 1].close >= root.activeCandles[0].close : true
+            }
+            Text {
+              width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+              objectName: "history-status"
+              text: (root.chartState === "loading" ? "Loading history…" : root.chartState === "unavailable" ? "History unavailable · " + root.chartError : root.chartState === "stale" ? "Stale cached history · " + (root.chartError || "Refresh to update") : (root.activeCandles.length === 1 ? "1 candle available; waiting for more · " : "History updated ") + MarketModel.formatAge(root.chartEntry ? root.chartEntry.savedAt : 0, root.marketService ? root.marketService.now : Date.now())) + (root.chartEntry && root.chartEntry.windowLabel ? "\n" + root.chartEntry.windowLabel + (root.chartEntry.sessionDate ? " · " + root.chartEntry.sessionDate : "") : "") + (root.activeCandles.length ? "\n" + new Date(root.activeCandles[0].time).toLocaleString() + " – " + new Date(root.activeCandles[root.activeCandles.length - 1].time).toLocaleString() : "") + "\n" + MarketModel.providerDisplayName(MarketModel.selectedProvider(root.selectedAsset)) + " · Trade candles · " + (root.chartEntry ? root.chartEntry.interval : "")
+              font.pixelSize: Style.font.caption; color: root.chartState === "unavailable" || root.chartState === "stale" ? Color.foreground : Util.alpha(Color.foreground, 0.75)
+            }
+            MarketAction { text: "Retry history"; visible: root.chartState === "stale" || root.chartState === "unavailable"; onClicked: if (root.marketService) root.marketService.fetchCandles(root.selectedAsset, root.selectedTimeframe, true) }
+            MarketAction { text: root.comparisonOpen ? "▾ Exchange comparison" : "▸ Exchange comparison"; onClicked: root.comparisonOpen = !root.comparisonOpen }
+            Column {
+              width: parent.width; spacing: Style.space(6); visible: root.comparisonOpen
+              Repeater {
+                model: root.isStock ? ["yahoo"] : ["binance", "coinbase", "hyperliquid"]
                 Text {
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: root.binanceQuote ? MarketModel.formatPercentage(root.binanceQuote.change24h) : ""
+                  required property string modelData
+                  readonly property var quote: root.marketService && root.revision >= 0 ? root.marketService.getProviderQuote(root.selectedAsset, modelData) : null
+                  width: column.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                  text: MarketModel.providerDisplayName(modelData) + (modelData === "hyperliquid" ? " · Perp" : modelData === "yahoo" ? " · Equity" : " · Spot") + " · " + (quote ? MarketModel.formatPrice(quote.price, undefined, quote.currency) + " · " + quote.freshness + " · " + MarketModel.formatAge(quote.providerTimestamp, root.marketService.now) : "Unavailable")
                   font.pixelSize: Style.font.caption
-                  color: (root.binanceQuote && root.binanceQuote.change24h >= 0) ? "#26a69a" : "#ef5350"
+                  color: quote && (quote.freshness === "LIVE" || quote.freshness === "CURRENT") ? "#26a69a" : Color.muted
                 }
               }
-
-              // Coinbase Row (for Crypto)
-              Item {
-                width: parent.width
-                height: coinbaseLeft.implicitHeight
-                visible: !root.isStock
-                
-                Row {
-                  id: coinbaseLeft
-                  anchors.left: parent.left
-                  anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.space(6)
-                  Rectangle {
-                    width: Style.space(8); height: Style.space(8); radius: Style.space(4)
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: root.coinbaseQuote ? "#26a69a" : Color.muted
-                  }
-                  Text { text: "Coinbase (Spot)"; width: Style.space(110); font.pixelSize: Style.font.caption; color: Color.foreground; anchors.verticalCenter: parent.verticalCenter }
-                  Text {
-                    text: root.coinbaseQuote ? MarketModel.formatPrice(root.coinbaseQuote.price) : "--"
-                    font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-                }
-                
-                Text {
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: root.coinbaseQuote ? MarketModel.formatPercentage(root.coinbaseQuote.change24h) : ""
-                  font.pixelSize: Style.font.caption
-                  color: (root.coinbaseQuote && root.coinbaseQuote.change24h >= 0) ? "#26a69a" : "#ef5350"
-                }
+            }
+          }
+          Column {
+            width: parent.width; spacing: Style.space(8); visible: root.view === "manage"
+            Dropdown {
+              objectName: "bar-ticker"
+              width: parent.width
+              label: "Bar ticker when rotation is off"
+              options: root.assets
+              value: root.marketService ? root.marketService.pinnedAsset : ""
+              onChanged: function(value) { if (root.marketService) root.marketService.pinnedAsset = value }
+            }
+            MarketAction { text: root.marketService && root.marketService.rotationEnabled ? "Rotation: on" : "Rotation: off"; onClicked: if (root.marketService) root.marketService.rotationEnabled = !root.marketService.rotationEnabled }
+            Text { text: "Watchlist · " + root.assets.length + " / 20"; font.pixelSize: Style.font.bodySmall; font.bold: true; color: Color.foreground }
+            BorderSurface {
+              width: parent.width; height: Style.space(36)
+              color: Style.normalFillAlpha; radius: Style.cornerRadius
+              borderSpec: Border.controlSpec(search.activeFocus ? "selected" : "normal", Color.foreground, Color.accent)
+              TextInput {
+                id: search
+                objectName: "market-search"
+                onActiveFocusChanged: if (activeFocus) scroller.contentY = 0
+                anchors.fill: parent; anchors.margins: Style.space(8)
+                text: root.searchQuery; onTextChanged: root.searchQuery = text
+                font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; color: Color.foreground
+                clip: true; activeFocusOnTab: true; selectByMouse: true
+                Accessible.name: "Search markets"
+                Text { visible: !search.text; text: "Search symbol or name…"; color: Color.muted; font: search.font }
+                Keys.onDownPressed: root.searchIndex = Math.min(root.searchResults.length - 1, root.searchIndex + 1)
+                Keys.onUpPressed: root.searchIndex = Math.max(0, root.searchIndex - 1)
+                Keys.onReturnPressed: root.addResult(root.searchIndex)
+                Keys.onEnterPressed: root.addResult(root.searchIndex)
               }
-
-              // Hyperliquid Row (for Crypto)
-              Item {
-                width: parent.width
-                height: hyperliquidLeft.implicitHeight
-                visible: !root.isStock
-                
-                Row {
-                  id: hyperliquidLeft
-                  anchors.left: parent.left
-                  anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.space(6)
-                  Rectangle {
-                    width: Style.space(8); height: Style.space(8); radius: Style.space(4)
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: root.hyperliquidQuote ? "#26a69a" : Color.muted
-                  }
-                  Text { text: "Hyperliquid (Perp)"; width: Style.space(110); font.pixelSize: Style.font.caption; color: Color.foreground; anchors.verticalCenter: parent.verticalCenter }
-                  Text {
-                    text: root.hyperliquidQuote ? MarketModel.formatPrice(root.hyperliquidQuote.price) : "--"
-                    font.pixelSize: Style.font.caption; font.bold: true; color: Color.foreground
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-                }
-                
-                Text {
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: root.hyperliquidQuote ? MarketModel.formatPercentage(root.hyperliquidQuote.change24h) : ""
-                  font.pixelSize: Style.font.caption
-                  color: (root.hyperliquidQuote && root.hyperliquidQuote.change24h >= 0) ? "#26a69a" : "#ef5350"
-                }
+            }
+            Text {
+              width: parent.width; wrapMode: Text.Wrap
+              visible: root.searchQuery.length > 0
+              text: root.searchState === "loading" ? "Searching Yahoo… Local results available below." : root.searchState === "error" ? "Search failed. Edit your search to retry; local results remain available." : root.searchResults.length === 0 ? "No results" : "↑ / ↓ to select · Enter to add"
+              font.pixelSize: Style.font.caption; color: Color.muted
+            }
+            Repeater {
+              model: root.searchQuery ? root.searchResults : []
+              MarketAction {
+                required property var modelData
+                required property int index
+                width: column.width
+                text: "+ " + modelData.asset + " · " + modelData.name
+                selected: root.searchIndex === index
+                onClicked: root.addResult(index)
+              }
+            }
+            Text { text: root.message; visible: text !== ""; color: Color.foreground; font.pixelSize: Style.font.caption; textFormat: Text.PlainText }
+            MarketAction { text: "Undo removal"; visible: root.marketService && root.marketService.removedItem !== null; onClicked: { root.marketService.undoRemoval(); root.message = "Removal undone" } }
+            Repeater {
+              model: root.assets
+              Row {
+                required property string modelData
+                required property int index
+                width: column.width; spacing: Style.space(5)
+                MarketAction { width: parent.width - Style.space(120); text: parent.modelData; onClicked: root.showDetail(parent.modelData) }
+                MarketAction { width: Style.space(35); text: "↑"; Accessible.name: "Move " + parent.modelData + " up"; enabled: parent.index > 0; onClicked: root.marketService.reorderMarket(parent.index, parent.index - 1) }
+                MarketAction { width: Style.space(35); text: "↓"; Accessible.name: "Move " + parent.modelData + " down"; enabled: parent.index < root.assets.length - 1; onClicked: root.marketService.reorderMarket(parent.index, parent.index + 1) }
+                MarketAction { width: Style.space(35); text: "×"; Accessible.name: "Remove " + parent.modelData; onClicked: root.remove(parent.modelData) }
               }
             }
           }
