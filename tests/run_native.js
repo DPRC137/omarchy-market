@@ -16,6 +16,9 @@ const server = http.createServer((request, response) => {
 server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
 fs.mkdirSync(path.join(directory, 'runtime'), { mode: 0o700 });
 fs.mkdirSync(path.join(directory, 'config'));
+const legacyDir = path.join(directory, 'config', 'Unknown Organization');
+fs.mkdirSync(legacyDir);
+fs.writeFileSync(path.join(legacyDir, 'quickshell.conf'), '[General]\nwatchlistJson=' + JSON.stringify('["ETH","BTC","AAPL"]') + '\n');
 fs.symlinkSync(path.resolve(__dirname, '..'), path.join(directory, 'market'));
 for (const name of ['Commons', 'Ui']) {
   const target = `/usr/share/omarchy/shell/${name}`;

@@ -35,6 +35,7 @@ ShellRoot {
         if (!root.failed) console.log("NATIVE_RESTORE_PASS")
         Qt.quit(); return
       }
+      root.check(JSON.stringify(service.watchlist) === '["ETH","BTC","AAPL"]', "Legacy General-group watchlist was not preserved")
       service.persist(Model.deserializeWatchlist('["AAPL","MSFT"]'))
       service.provider("yahoo").client.cancel(function() { return true; })
       root.check(!service.provider("binance").active && !service.provider("hyperliquid").active && !service.provider("coinbase").active, "stock-only watchlist started crypto providers")

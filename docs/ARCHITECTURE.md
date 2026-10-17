@@ -46,7 +46,9 @@ identity comes from the request's isolated URL/closure, never mutable globals.
 Settings retain the original QSettings category and host organization/application
 file location, with explicit default names when the host omits them. Initial
 loading is deferred until Quickshell has established its application identity.
-Schema v1 and legacy arrays preserve asset ordering. Version 2 additionally
+Schema v1 and legacy arrays preserve asset ordering. If the scoped category is
+empty, migration also reads the legacy General-group watchlist produced by hosts
+without application identifiers; the original value is kept intact. Version 2 additionally
 persists dynamic currency and exchange metadata. Unrelated shell.json values
 (`multiAsset`, `speed`) retain their meaning; pin/rotation are separate settings.
 

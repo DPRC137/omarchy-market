@@ -36,6 +36,13 @@ Item {
     property string pinnedAsset: ""
     property bool rotationEnabled: false
   }
+  // Hosts without application identifiers wrote legacy v1 settings to the
+  // General group despite the declared category. Read that group only when
+  // the correctly scoped store is empty; never overwrite the legacy value.
+  Settings {
+    id: legacySettings
+    location: pluginSettings.location
+  }
   function persist(watchlistObject) {
     MarketModel.clearDynamicInstruments()
     watchlistObject.items.forEach(function(item) { if (item.assetClass === "stock" && !MarketModel.CATALOG_BY_ASSET[item.asset]) MarketModel.registerDynamicInstrument(item) })
@@ -159,7 +166,7 @@ Item {
       root.updateRevision++
       if (root.history && root.history.visible) root.candlesUpdated(root.history.visible.asset, root.history.visible.range, root.getCandles(root.history.visible.asset, root.history.visible.range))
     }, Date.now)
-    Qt.callLater(function() { root.persist(MarketModel.deserializeWatchlist(pluginSettings.watchlistJson)) })
+    Qt.callLater(function() { root.persist(MarketModel.deserializeWatchlist(pluginSettings.watchlistJson || String(legacySettings.value("watchlistJson", "")))) })
   }
   Component.onDestruction: if (history) history.clear()
 }

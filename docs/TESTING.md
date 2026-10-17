@@ -31,7 +31,8 @@ processes or changing the user's enabled plugins. The historical
   Quickshell in offscreen mode with isolated runtime/config directories. Checks
   real XHR JSON/parse/size/error/timeout/cancel paths, production Yahoo search
   error delivery, ordered Undo, stock-only provider/process shutdown, and a
-  second process to verify watchlist/pin/rotation persistence. No provider access
+  second process to verify watchlist/pin/rotation persistence. The first process
+  starts with a legacy General-group watchlist to exercise installed migration. No provider access
   is required for the assertions. Startup provider requests may begin briefly
   before the test switches watchlists and cancels them.
 - `node tests/run_ui.js`: requires Wayland, QtTest and installed Quattro imports.
