@@ -80,3 +80,8 @@ Native captures: [original detail](screenshots/before-detail.png),
 [final detail typography](screenshots/after-detail-header.png),
 [closed-market equity session](screenshots/after-equity-session.png). These are the actual popup's
 content rendered on Wayland with Quattro imports, excluding surrounding desktop.
+
+The [1.3.0 README gallery](screenshots/README.md) contains fresh captures of the
+final crypto/equity detail, watchlist and Manage screens, including the native
+card background and border. All market data in those captures came from live
+providers in an isolated host.

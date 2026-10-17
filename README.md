@@ -3,7 +3,36 @@
 A lightweight native market watchlist and ticker for **Omarchy Quattro**.
 No accounts, API keys, npm packages, or background daemons.
 
-![Preview](preview.png)
+[**Version 1.3.0**](https://github.com/DPRC137/omarchy-market/releases/tag/v1.3.0) · [Changelog](CHANGELOG.md) · [Data semantics](docs/SEMANTICS.md)
+
+## What's new in 1.3.0
+
+- **Direct chart access:** clicking the bar opens the displayed instrument.
+  Back brings up the compact watchlist; hover keeps the ticker in place.
+- **Clearer detail:** a prominent ticker and price, a smaller currency label,
+  and fixed bar-ticker selection under Manage. Rotation remains optional.
+- **Reliable equity 1D:** shows the latest regular session with its date across
+  weekends and closures, with bounded recovery for empty provider responses.
+- **Explicit market data:** retain source currency, instrument type, quote age,
+  connection state and session status; stale values stay labelled.
+- **Watchlist management:** keyboard search, ordering and Undo, with existing
+  watchlists and preferences preserved during migration.
+
+## Screenshots
+
+Captured from the current native Quattro interface with live provider data.
+Prices and session dates reflect capture time; themes and scaling follow your
+Omarchy settings.
+
+| Crypto detail | Equity detail while closed |
+| --- | --- |
+| <img src="docs/screenshots/v1.3.0-crypto.png" alt="BTC chart with prominent ticker and a smaller USDT label beside the price" width="420"> | <img src="docs/screenshots/v1.3.0-equity.png" alt="TSLA chart showing the latest regular session and its date while the market is closed" width="420"> |
+
+| Watchlist | Manage |
+| --- | --- |
+| <img src="docs/screenshots/v1.3.0-watchlist.png" alt="Compact crypto and equity watchlist with source currencies and freshness" width="420"> | <img src="docs/screenshots/v1.3.0-manage.png" alt="Manage screen with fixed bar ticker, optional rotation, search and watchlist ordering" width="420"> |
+
+[Capture details](docs/screenshots/README.md).
 
 ## Watchlist and detail
 
@@ -23,9 +52,10 @@ Missing data appears as `—`. Equity volume is shares, not dollars.
 
 Connection state, quote age and session status are separate. Last-known values
 stay visible with age and freshness when a feed fails. History has loading,
-unavailable, stale-cache and retry states. `1D / 1W / 1M / 1Y` mean consistent
-periods, with actual dates, interval and source shown beneath the chart. Equity
-1D shows the latest regular session across closures; crypto 1D is 24 hours.
+unavailable, stale-cache and retry states. Choose `1D / 1W / 1M / 1Y`; actual
+dates, interval and source appear beneath the chart. Equity 1D shows the latest
+regular session across closures; crypto 1D is 24 hours. Longer ranges use
+calendar windows.
 See [exact semantics](docs/SEMANTICS.md).
 
 ## Requirements
@@ -52,6 +82,18 @@ git clone https://github.com/DPRC137/omarchy-market.git ~/.config/omarchy/plugin
 omarchy-shell shell rescanPlugins
 omarchy plugin enable io.github.dpr.omarchy-market
 ```
+
+### Upgrading to 1.3.0
+
+```bash
+omarchy plugin update io.github.dpr.omarchy-market --yes
+omarchy restart shell
+```
+
+Your watchlist, order, fixed ticker, rotation preference and existing widget
+settings are preserved. Restarting the shell loads the updated QML code.
+Prices now retain their explicit source currency and instrument type; see the
+[1.3.0 changelog](CHANGELOG.md) for the behavior changes.
 
 Remove with `omarchy plugin remove io.github.dpr.omarchy-market`.
 
@@ -94,3 +136,6 @@ node tests/run_ui.js equity   # optional live Yahoo session-chart regression
 Native tests use temporary settings and leave the installed shell intact.
 See [testing and limitations](docs/TESTING.md). Node tests alone do not establish
 that the native UI works.
+
+Changes reach the protected `master` branch through checked pull requests.
+See [maintainer workflow](docs/MAINTAINING.md).
