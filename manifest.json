@@ -5,7 +5,7 @@
   "version": "1.3.0",
   "author": "DPRC137",
   "license": "MIT",
-  "description": "Native Omarchy/Quattro financial market ticker and compact market terminal",
+  "description": "Native Omarchy/Quattro ticker for crypto, stocks and ETFs, with charts and a compact watchlist",
   "kinds": [
     "service",
     "bar-widget"
@@ -16,7 +16,7 @@
   },
   "barWidget": {
     "displayName": "Market",
-    "description": "Live financial market data ticker and terminal",
+    "description": "Crypto, stocks and ETFs with charts and watchlists",
     "category": "Finance",
     "allowMultiple": false,
     "defaultSection": "center",

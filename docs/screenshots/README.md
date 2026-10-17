@@ -17,6 +17,9 @@ it did not change the installed watchlist or preferences. Prices, freshness ages
 provider status and dates are observations at capture time, not price expectations
 or guarantees of ongoing provider availability.
 
+The root `preview.png` is an identical copy of `v1.3.0-crypto.png` for marketplace
+preview discovery.
+
 Older `before-*` / `after-*` images are historical evidence from the implementation
 and remain linked from the earlier verification notes. The README uses the final
 1.3.0 captures above.
