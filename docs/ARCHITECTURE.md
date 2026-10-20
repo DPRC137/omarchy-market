@@ -10,6 +10,10 @@ There is no browser UI, external backend, framework replacement or npm package.
 - `MarketService.qml`: provider lifetime, bounded watched quote store (20 assets
   × supported providers), one-second UI freshness revision, persisted settings,
   undo, pinned asset and optional rotation, visible history lifecycle.
+- `models/Recovery.js`: checks each watched provider/instrument for stale or
+  missing quotes on the service's one-second clock. Recovery fetches are limited
+  to once per feed every 15 seconds; normal HTTP deduplication/backoff still
+  applies. Closed-market equities retain their longer freshness window.
 - `models/History.js`: provider request specifications, calendar range/interval
   separation, generation and identity validation, provider-defined equity day sessions, one
   bounded empty-session recovery, candle filtering, bounded
@@ -26,13 +30,17 @@ There is no browser UI, external backend, framework replacement or npm package.
   subscription/HTTP/process lifetime. Only watched provider-supported symbols
   are subscribed. Binance/Coinbase each own one stdio WebSocket bridge;
   Hyperliquid polls mark/context data every eight seconds, requiring no bridge.
-  Quote REST refreshes are deduplicated. Removed/unwatched responses are ignored.
+  Background quote REST refreshes are deduplicated. Manual Refresh replaces
+  outstanding quote work and repairs streams (at most once every 30 seconds),
+  preserving search/history jobs. Removed/unwatched responses are ignored.
 - `YahooProvider.qml`: one queue shared by quotes, search and history, with
   1200ms minimum spacing. Polls every minute if any watched stock is open or
   unknown, otherwise every five minutes. Search remains on-demand even without
   watched equities. Stale search replies are ignored and failures are explicit.
 - `scripts/ws_bridge.js`: native Node WebSocket, subscription deltas, reconnect
-  watchdog/backoff. Empty subscriptions open no socket. Old sockets and timers
+  watchdog/backoff, ten-second connection deadline and explicit reconnect IPC.
+  The watchdog schedules recovery directly without waiting for a close event.
+  Empty subscriptions open no socket. Old sockets and timers
   are closed on reconnect. Parent EOF and SIGTERM clean up the process.
 
 History jobs have higher priority than search, followed by background quotes.

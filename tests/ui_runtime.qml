@@ -145,7 +145,7 @@ ShellRoot {
     onTriggered: {
       var back = root.find(panel.contentItem, "← Back")
       var manage = root.find(panel.contentItem, "Manage")
-      var refresh = root.find(panel.contentItem, "Refresh")
+      var refresh = root.find(panel.contentItem, "market-refresh")
       var actions = [back, manage, refresh]
       for (var i = 0; i < actions.length; i++) {
         var a = actions[i]

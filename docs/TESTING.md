@@ -14,7 +14,10 @@ instrument/interval validation, old and out-of-order responses, cache expiry,
 forced refresh, empty history, retry, captured closed-session payloads, bounded
 empty-success recovery, session boundaries/half days and first-candle display, queue bounds/priority/deduplication,
 finite backoff, silent-transport deadlines, cancellation, late callbacks, and
-bridge reconnect/parent-EOF cleanup. These tests execute production modules;
+bridge reconnect/parent-EOF cleanup. Recovery tests check individual instruments
+and sources, throttled outage retries, and closed-market freshness. Bridge tests
+cover connections that never open and sockets whose close emits no event.
+These tests execute production modules;
 they do not implement copied schedulers or assert QML source strings.
 
 `bash tests/test_fault_injection.sh` runs deterministic faults without killing
@@ -31,7 +34,9 @@ processes or changing the user's enabled plugins. The historical
 - `node tests/run_native.js`: starts a private localhost HTTP server and actual
   Quickshell in offscreen mode with isolated runtime/config directories. Checks
   real XHR JSON/parse/size/error/timeout/cancel paths, production Yahoo search
-  error delivery, ordered Undo, stock-only provider/process shutdown, and a
+  error delivery, manual replacement of blocked quote requests without cancelling
+  search/history, a stale quote becoming current after refresh, ordered Undo,
+  stock-only provider/process shutdown, and a
   second process to verify watchlist/pin/rotation persistence. The first process
   starts with a legacy General-group watchlist to exercise installed migration. No provider access
   is required for the assertions. Startup provider requests may begin briefly

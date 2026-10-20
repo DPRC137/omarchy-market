@@ -121,6 +121,12 @@ Remove with `omarchy plugin remove io.github.dpr.omarchy-market`.
 - Hover or focus the chart and use Left/Right, Home/End for actual candle time
   and price. Chart times use your local timezone.
 
+Stale or missing quotes trigger automatic recovery, with attempts limited to
+once per provider every 15 seconds. Refresh replaces outstanding quote requests
+and reconnects streams, with a 30-second reconnect cooldown. The button shows
+“Refreshing…” while requests are pending. Provider outages can still delay new data;
+the last received values stay labelled stale until an update succeeds.
+
 Existing `shell.json` widget settings remain supported:
 
 ```json

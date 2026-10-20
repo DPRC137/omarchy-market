@@ -160,6 +160,7 @@ Panel {
           MarketAction { id: manageAction; text: "Manage"; visible: root.view !== "manage"; onClicked: root.showManage() }
           MarketAction {
             id: refreshAction
+            objectName: "market-refresh"
             text: root.marketService && root.marketService.refreshing ? "Refreshing…" : "Refresh"
             Accessible.description: "Refresh market quotes and visible chart. Shortcut R."
             onClicked: if (root.marketService) root.marketService.refresh()
