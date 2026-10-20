@@ -41,6 +41,11 @@ Item {
     })
   }
   function fetchSnapshot() { targetAssets.forEach(fetchQuote) }
+  function refresh(force) {
+    if (!active) return
+    if (force) http.cancel(function(r) { return r.kind === "quote"; })
+    fetchSnapshot()
+  }
   function searchSymbols(query, callback) {
     var generation = ++searchGeneration
     http.cancel(function(r) { return r.kind === "search"; })

@@ -63,16 +63,16 @@ function emit(data) {
   }
 }
 
-function resetWatchdog() {
+function resetWatchdog(timeout = 45000) {
   lastMessageTime = Date.now();
   if (watchdogTimer) clearTimeout(watchdogTimer);
-  // If no message or heartbeat frame is received in 45 seconds, trigger reconnection
+  // Reconnect directly: close() is not guaranteed to deliver an onclose event.
   watchdogTimer = setTimeout(() => {
     if (!isClosing && ws) {
-      emit({ type: "status", provider, status: "STALE", reason: "Watchdog timeout: no traffic for 45s" });
-      try { ws.close(); } catch (e) {}
+      emit({ type: "status", provider, status: "STALE", reason: "Watchdog timeout: no traffic for " + timeout / 1000 + "s" });
+      handleClose("Watchdog timeout");
     }
-  }, 45000);
+  }, timeout);
 }
 
 function clearAllTimers() {
@@ -97,6 +97,8 @@ function connect() {
     } else if (provider === "hyperliquid") {
       connectHyperliquid();
     }
+    // A connection that never opens never receives the normal traffic watchdog.
+    resetWatchdog(10000);
   } catch (err) {
     handleClose(err ? err.message : "Connect exception");
   }
@@ -213,6 +215,13 @@ function connectHyperliquid() {
 function handleStdinCommand(cmdObj) {
   if (!cmdObj || typeof cmdObj !== "object") return;
   const action = cmdObj.action || cmdObj.cmd;
+  if (action === "reconnect") {
+    clearAllTimers();
+    closeSocket();
+    reconnectDelay = 1000;
+    connect();
+    return;
+  }
   const symbols = sanitizeSymbols(cmdObj.symbols);
 
   if (action === "set_subscriptions") {
@@ -403,4 +412,3 @@ process.stdin.on("close", () => cleanupAndExit(0));
 process.on("exit", () => cleanupAndExit(0));
 
 connect();
-

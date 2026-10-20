@@ -116,7 +116,7 @@ Panel {
             spacing: Style.space(6)
             MarketAction { text: root.view === "watchlist" ? "Watchlist" : "← Back"; enabled: root.view !== "watchlist"; onClicked: root.back() }
             MarketAction { text: "Manage"; visible: root.view !== "manage"; onClicked: { root.view = "manage"; search.forceActiveFocus() } }
-            MarketAction { text: "Refresh"; onClicked: if (root.marketService) root.marketService.refresh() }
+            MarketAction { text: root.marketService && root.marketService.refreshing ? "Refreshing…" : "Refresh"; onClicked: if (root.marketService) root.marketService.refresh() }
           }
           Column {
             visible: root.view === "watchlist"
