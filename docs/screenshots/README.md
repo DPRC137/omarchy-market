@@ -1,5 +1,16 @@
 # Screenshot provenance
 
+## Current 1.4.0 gallery
+
+The [1.4.0 gallery](v1.4.0/README.md) contains seven fresh original native captures
+of the merged interface, plus an explanatory generated marketplace preview.
+The root `preview.png` now uses that promotional card. The README gallery links
+to the current watchlist, AAPL/BTC charts, management and search captures.
+All seven show fully loaded live screens at one 600×800 native window size.
+Provenance and the distinction between promotional artwork and unedited
+originals are documented alongside them. Earlier fixture, narrow and error-state
+captures remain historical test evidence below, outside the current gallery.
+
 ## Chart-window follow-up
 
 `chart-windows/*.png` captures the actual native card on 2026-10-21
@@ -57,9 +68,9 @@ it did not change the installed watchlist or preferences. Prices, freshness ages
 provider status and dates are observations at capture time, not price expectations
 or guarantees of ongoing provider availability.
 
-The root `preview.png` is an identical copy of `v1.3.0-crypto.png` for marketplace
-preview discovery.
+The root `preview.png` used an identical copy of `v1.3.0-crypto.png` before the
+1.4.0 promotional card replaced it.
 
 Older `before-*` / `after-*` images are historical evidence from the implementation
-and remain linked from the earlier verification notes. The README uses the final
-1.3.0 captures above.
+and remain linked from the earlier verification notes. The README now uses the
+1.4.0 gallery.

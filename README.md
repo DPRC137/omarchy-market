@@ -3,43 +3,44 @@
 A lightweight native market watchlist and ticker for **Omarchy Quattro**.
 No accounts, API keys, npm packages, or background daemons.
 
-[**Version 1.3.0**](https://github.com/DPRC137/omarchy-market/releases/tag/v1.3.0) · [Changelog](CHANGELOG.md) · [Data semantics](docs/SEMANTICS.md)
+[**Version 1.4.0**](CHANGELOG.md#140--2026-10-21) · [Changelog](CHANGELOG.md) · [Data semantics](docs/SEMANTICS.md)
 
-## What's new in 1.3.0
+![Omarchy Market: crypto, stocks and ETFs in a native desktop plugin, with session-aware charts, date-window statistics and watchlist management](preview.png)
 
-- **Direct chart access:** clicking the bar opens the displayed instrument.
-  Back brings up the compact watchlist; hover keeps the ticker in place.
-- **Clearer detail:** a prominent ticker and price, a smaller currency label,
-  and fixed bar-ticker selection under Manage. Rotation remains optional.
-- **Reliable equity 1D:** shows the latest regular session with its date across
-  weekends and closures, with bounded recovery for empty provider responses.
-- **Explicit market data:** retain source currency, instrument type, quote age,
-  connection state and session status; stale values stay labelled.
-- **Watchlist management:** keyboard search, ordering and Undo, with existing
-  watchlists and preferences preserved during migration.
+## What's new in 1.4.0
 
-## Native redesign (unreleased)
-
-The watchlist now supports local filtering, categories and view-only sorting.
-Detail emphasizes price, movement and source currency, with session-aware
-history, a labelled price scale and keyboard inspection. Manage groups discovery, contextual row actions,
-pinning and rotation. The native header stays available while content scrolls.
+- **Redesigned native UI:** filter and sort a compact watchlist, browse categories,
+  and keep navigation within reach while scrolling detail and Manage.
+- **Continuous market charts:** equity observations use trading-session spacing,
+  smooth curves through recorded closes, readable price ticks and exact inspection.
+- **Stats for your date window:** 1D/1W/1M/1Y change, high/low/average close,
+  observed dates and sample count. Daily/session metrics remain separately available.
+- **An organized watchlist:** search, contextual edit actions, keyboard reordering,
+  remove/Undo, a pinned bar ticker and optional rotation.
+- **Existing settings retained:** keep your watchlist and preferences. Automatic
+  stale-feed recovery from 1.3.1 is included when upgrading the older listing.
 
 ## Screenshots
 
-Real Quickshell/Quattro popup captures using saved provider fixtures. These are
-reproducible UI examples, not current market prices. They use the active dark
-Omarchy theme in a temporary capture process.
+The preview above is generated promotional artwork using actual UI captures.
+The original screenshots below are unedited native Quickshell/Quattro cards in
+the active dark theme, all captured at the same 600×800 window size. Every screen
+waits for live quotes, history and search to finish loading. Prices are examples
+from capture time.
 
 | Watchlist | Asset detail |
 | --- | --- |
-| <img src="docs/screenshots/redesign/watchlist.png" alt="Native watchlist with filter, categories, sorting, source currencies and freshness" width="420"> | <img src="docs/screenshots/chart-windows/aapl-month.png" alt="AAPL monthly chart with continuous session spacing and selected-window closing-price statistics" width="420"> |
+| <img src="docs/screenshots/v1.4.0/watchlist.png" alt="Native watchlist with filter, categories, sorting, source currencies and freshness" width="420"> | <img src="docs/screenshots/v1.4.0/aapl-month.png" alt="AAPL monthly chart with continuous session spacing and selected-window closing-price statistics" width="420"> |
 
 | Manage | Search |
 | --- | --- |
-| <img src="docs/screenshots/redesign/manage.png" alt="Search, contextual watchlist editing and bar display preferences" width="420"> | <img src="docs/screenshots/redesign/search.png" alt="Native symbol and name search with explicit addition state" width="420"> |
+| <img src="docs/screenshots/v1.4.0/manage.png" alt="Search, contextual watchlist editing and bar display preferences" width="420"> | <img src="docs/screenshots/v1.4.0/search.png" alt="Native symbol and name search with explicit addition state" width="420"> |
 
-[All captures and provenance](docs/screenshots/README.md) ·
+| Crypto chart | Latest equity session |
+| --- | --- |
+| <img src="docs/screenshots/v1.4.0/crypto-week.png" alt="BTC weekly trade-close chart with USDT price and selected-window statistics" width="420"> | <img src="docs/screenshots/v1.4.0/equity-session.png" alt="TSLA latest regular-session chart with date and selected-window close statistics" width="420"> |
+
+[Full seven-image gallery and provenance](docs/screenshots/v1.4.0/README.md) ·
 [Redesign verification and limits](docs/NATIVE_REDESIGN.md).
 
 ## Watchlist and detail
@@ -93,7 +94,7 @@ omarchy-shell shell rescanPlugins
 omarchy plugin enable io.github.dpr.omarchy-market
 ```
 
-### Upgrading to 1.3.0
+### Upgrading to 1.4.0
 
 ```bash
 omarchy plugin update io.github.dpr.omarchy-market --yes
@@ -103,7 +104,7 @@ omarchy restart shell
 Your watchlist, order, fixed ticker, rotation preference and existing widget
 settings are preserved. Restarting the shell loads the updated QML code.
 Prices now retain their explicit source currency and instrument type; see the
-[1.3.0 changelog](CHANGELOG.md) for the behavior changes.
+[1.4.0 changelog](CHANGELOG.md#140--2026-10-21) for the behavior changes.
 
 Remove with `omarchy plugin remove io.github.dpr.omarchy-market`.
 
@@ -151,6 +152,7 @@ node tests/run_ui.js ticker   # compact bar, hover, direct asset chart and rotat
 node tests/run_ui.js chart    # session axis, curve geometry and inspection
 node tests/run_ui.js window   # timeframe stats and stale/missing/single states
 node tests/capture_ui.js      # native fixture screenshots; no live requests
+node tests/capture_gallery.js # settled live gallery; identical window sizes
 node tests/run_ui.js equity   # optional live Yahoo session-chart regression
 ./scripts/live-test.sh        # optional external WebSocket connectivity
 ```
@@ -158,6 +160,13 @@ node tests/run_ui.js equity   # optional live Yahoo session-chart regression
 Native tests use temporary settings and leave the installed shell intact.
 See [testing and limitations](docs/TESTING.md). Node tests alone do not establish
 that the native UI works.
+
+## License and acknowledgments
+
+Omarchy Market is [MIT licensed](LICENSE). The native chart adapts the Steffen
+curve helper from TradingView Lightweight Charts under Apache-2.0; its
+[license, notice and source attribution](third_party/lightweight-charts/README.md)
+are included. No TradingView service or embedded charting website is required.
 
 Changes reach the protected `master` branch through checked pull requests.
 See [maintainer workflow](docs/MAINTAINING.md).

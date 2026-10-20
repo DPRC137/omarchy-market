@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.dpr.omarchy-market",
   "name": "Omarchy Market",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "author": "DPRC137",
   "license": "MIT",
-  "description": "Native Omarchy/Quattro ticker for crypto, stocks and ETFs, with charts and a compact watchlist",
+  "description": "Crypto, stocks and ETFs on your Omarchy desktop: native charts, date-window stats and a searchable watchlist",
   "kinds": [
     "service",
     "bar-widget"
