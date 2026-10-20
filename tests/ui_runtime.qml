@@ -76,13 +76,54 @@ ShellRoot {
       events.keyClick(Qt.Key_Down, 0, 0); events.keyClick(Qt.Key_Up, 0, 0)
       events.keyClick(Qt.Key_Return, 0, 0)
       root.check(service.watchlist.indexOf("AMD") >= 0, "Enter did not add search result")
+      var duplicate = root.find(panel.contentItem, "manage-result-AMD")
+      root.check(duplicate !== null && !duplicate.enabled, "Added search result must be disabled")
+      events.keyClick(Qt.Key_Return, 0, 0)
+      root.check(service.watchlist.filter(function(asset) { return asset === "AMD" }).length === 1, "Duplicate Enter created duplicate asset")
       events.keyClick(Qt.Key_Escape, 0, 0)
       root.check(panel.view === "watchlist", "Search Escape did not return")
       events.keyClick(Qt.Key_Tab, 0, 0)
     }
   }
   Timer {
-    interval: 2000; running: true
+    interval: 1900; running: true
+    onTriggered: {
+      root.click("Manage")
+      panel.searchQuery = ""
+    }
+  }
+  Timer {
+    interval: 2050; running: true
+    onTriggered: {
+      root.click("manage-edit-BTC")
+      var edit = root.find(panel.contentItem, "manage-edit-BTC")
+      edit.forceActiveFocus()
+      events.keyClick(Qt.Key_Down, Qt.AltModifier, 0)
+      root.check(service.watchlist[1] === "BTC", "Alt+Down did not reorder market")
+    }
+  }
+  Timer {
+    interval: 2300; running: true
+    onTriggered: {
+      var edit = root.find(panel.contentItem, "manage-edit-BTC")
+      root.check(edit !== null && edit.activeFocus, "Reordering lost keyboard focus")
+      root.click("manage-remove-BTC")
+      root.check(service.watchlist.indexOf("BTC") === -1, "Remove action failed")
+      var search = root.find(panel.contentItem, "market-search")
+      root.check(search.activeFocus, "Removal lost keyboard focus")
+    }
+  }
+  Timer {
+    interval: 2550; running: true
+    onTriggered: {
+      var search = root.find(panel.contentItem, "market-search")
+      root.click("Undo removal")
+      root.check(service.watchlist[1] === "BTC", "Undo action did not restore ordered market")
+      root.check(search.activeFocus, "Undo lost keyboard focus")
+    }
+  }
+  Timer {
+    interval: 2800; running: true
     onTriggered: {
       // Reflow with narrow available space and enlarged native text/spacing.
       Style.fontBaseSize = 18
@@ -96,11 +137,30 @@ ShellRoot {
     }
   }
   Timer {
-    interval: 2600; running: true
+    interval: 3100; running: true
+    onTriggered: panel.showDetail("BTC")
+  }
+  Timer {
+    interval: 3400; running: true
     onTriggered: {
+      var back = root.find(panel.contentItem, "← Back")
+      var manage = root.find(panel.contentItem, "Manage")
+      var refresh = root.find(panel.contentItem, "Refresh")
+      var actions = [back, manage, refresh]
+      for (var i = 0; i < actions.length; i++) {
+        var a = actions[i]
+        root.check(a !== null && a.visible, "Narrow navigation action unavailable")
+        if (!a) continue
+        var ap = a.mapToItem(panel.contentItem, 0, 0)
+        root.check(ap.x >= 0 && ap.x + a.width <= panel.contentItem.width + 1, "Narrow navigation overflows")
+        for (var j = 0; j < i; j++) {
+          var b = actions[j], bp = b.mapToItem(panel.contentItem, 0, 0)
+          root.check(ap.x >= bp.x + b.width || bp.x >= ap.x + a.width || ap.y >= bp.y + b.height || bp.y >= ap.y + a.height, "Narrow navigation overlaps")
+        }
+      }
       panel.back(); panel.close()
       root.check(service.visibleAsset === "", "Closing popup retained history request")
-      if (!root.failed) console.log("UI_PASS: real pointer row/detail, Back/Escape, search typing/arrows/Enter, Tab, undo, enlarged type and close cleanup")
+      if (!root.failed) console.log("UI_PASS: real pointer row/detail, Back/Escape, search typing/arrows/Enter, Tab, duplicate protection, keyboard reorder/focus, remove/undo/focus, enlarged type and close cleanup")
       Qt.quit()
     }
   }
