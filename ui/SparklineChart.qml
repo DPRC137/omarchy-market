@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 import "../models/MarketModel.js" as MarketModel
+import "../models/ChartGeometry.js" as ChartGeometry
 
 Item {
   id: root
@@ -9,6 +10,7 @@ Item {
   property bool isPositive: true
   property string currency: "USD"
   property string timeframe: "1D"
+  property bool tradingSessions: false
   property string interval: ""
   property string emptyText: "No history available"
   property color positiveColor: tokens.positive
@@ -21,13 +23,11 @@ Item {
   readonly property real minVal: hasData ? Math.min.apply(null, numericPoints) : 0
   readonly property real maxVal: hasData ? Math.max.apply(null, numericPoints) : 0
   readonly property real plotLeft: Style.space(5)
-  readonly property real plotRight: width - Style.space(5)
+  readonly property var priceScale: ChartGeometry.priceScale(minVal,maxVal)
+  readonly property real priceAxisWidth: Math.max(Style.space(40), Math.max(axisMeasure.implicitWidth, closeMeasure.implicitWidth) + Style.space(10))
+  readonly property real plotRight: Math.max(plotLeft + 1, width - priceAxisWidth)
   readonly property real plotTop: Style.space(40)
   readonly property real plotBottom: height - Style.space(26)
-  readonly property real expectedStep: {
-    var match = /^(\d+)(m|h|d)$/.exec(interval)
-    return match ? Number(match[1]) * ({ m: 60000, h: 3600000, d: 86400000 }[match[2]]) : 0
-  }
   property bool hovered: false
   property int hoverIndex: -1
   readonly property var hoverCandle: hovered && hoverIndex >= 0 ? samples[hoverIndex] : null
@@ -47,7 +47,7 @@ Item {
     for (var i = 0; points && i < points.length; i++) {
       var raw = points[i]
       var value = typeof raw === "number" ? raw : raw ? (typeof raw.close === "number" ? raw.close : raw.price) : NaN
-      if (typeof value === "number" && Number.isFinite(value))
+      if (typeof value === "number" && Number.isFinite(value) && value > 0)
         next.push({ close: value, time: raw && Number.isFinite(raw.time) ? raw.time : 0, sourceIndex: i })
     }
     if (!next.length && activeFocus) focus = false
@@ -59,11 +59,26 @@ Item {
   function pointX(index) {
     if (samples.length <= 1) return (plotLeft + plotRight) / 2
     var first = samples[0].time, last = samples[samples.length - 1].time
-    var ratio = last > first && first > 0 ? (samples[index].time - first) / (last - first) : index / (samples.length - 1)
+    var ratio = !tradingSessions && last > first && first > 0 ? (samples[index].time - first) / (last - first) : index / (samples.length - 1)
     return plotLeft + ratio * (plotRight - plotLeft)
   }
+  // Equity observations share the plot evenly, removing overnight/weekend
+  // dead space. Hover still reads the original provider timestamp and close.
+  function traceLine(context) {
+    if (!samples.length) return
+    var geometry = samples.map(function(sample,index) { return {x:root.pointX(index),y:root.pointY(sample.close)} })
+    context.moveTo(geometry[0].x, geometry[0].y)
+    var segments = ChartGeometry.curveSegments(geometry)
+    for (var i = 0; i < segments.length; i++) {
+      var s = segments[i]
+      context.bezierCurveTo(s.x1,s.y1,s.x2,s.y2,s.x,s.y)
+    }
+  }
   function pointY(value) {
-    return plotTop + (maxVal === minVal ? 0.5 : (maxVal - value) / (maxVal - minVal)) * Math.max(0, plotBottom - plotTop)
+    return plotTop + (priceScale.max - value) / (priceScale.max - priceScale.min) * Math.max(0, plotBottom - plotTop)
+  }
+  function axisPrice(value) {
+    return value === 0 ? (0).toFixed(priceScale.precision) : MarketModel.formatPrice(value,priceScale.precision,currency,true)
   }
   function formatCandleTime(ts) {
     return ts > 0 ? Qt.formatDateTime(new Date(ts), "MMM d, hh:mm") : "Observation"
@@ -81,10 +96,12 @@ Item {
     hoverIndex = index; hovered = true
   }
   onPointsChanged: refreshSamples()
+  onTradingSessionsChanged: canvas.requestPaint()
   onWidthChanged: canvas.requestPaint()
   onHeightChanged: canvas.requestPaint()
   onStrokeColorChanged: canvas.requestPaint()
-  onExpectedStepChanged: canvas.requestPaint()
+  onPriceScaleChanged: canvas.requestPaint()
+  onPlotRightChanged: canvas.requestPaint()
   Component.onCompleted: refreshSamples()
   Keys.onLeftPressed: { hoverIndex = Math.max(0, hovered ? hoverIndex - 1 : samples.length - 1); hovered = hasData }
   Keys.onRightPressed: { hoverIndex = Math.min(samples.length - 1, hovered ? hoverIndex + 1 : 0); hovered = hasData }
@@ -106,31 +123,36 @@ Item {
       ctx.reset()
       ctx.clearRect(0, 0, width, height)
       if (!root.hasData) return
-      ctx.strokeStyle = Qt.rgba(root.strokeColor.r, root.strokeColor.g, root.strokeColor.b, 0.14)
+      ctx.strokeStyle = tokens.divider
       ctx.lineWidth = 1
-      for (var line = 0; line < 3; line++) {
-        var y = root.plotTop + line * (root.plotBottom - root.plotTop) / 2
+      for (var line = 0; line < root.priceScale.ticks.length; line++) {
+        var y = root.pointY(root.priceScale.ticks[line])
         ctx.beginPath(); ctx.moveTo(root.plotLeft, y); ctx.lineTo(root.plotRight, y); ctx.stroke()
       }
       ctx.beginPath()
-      for (var i = 0; i < root.samples.length; i++) {
-        var p = root.samples[i], prev = i > 0 ? root.samples[i - 1] : null
-        var gap = prev && (p.sourceIndex > prev.sourceIndex + 1 || (root.expectedStep > 0 && p.time - prev.time > root.expectedStep * 1.8))
-        if (i === 0 || gap) ctx.moveTo(root.pointX(i), root.pointY(p.close))
-        else ctx.lineTo(root.pointX(i), root.pointY(p.close))
-      }
-      ctx.strokeStyle = root.strokeColor; ctx.lineWidth = Style.space(2); ctx.lineJoin = "round"; ctx.stroke()
-      // Render observations bounding each gap, including isolated sessions.
+      root.traceLine(ctx)
+      ctx.strokeStyle = root.strokeColor; ctx.lineWidth = Style.space(2); ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.stroke()
+      // One endpoint, rather than dots at every overnight/weekend boundary.
+      var last = root.samples.length - 1
       ctx.fillStyle = root.strokeColor
-      for (var j = 0; j < root.samples.length; j++) {
-        var current = root.samples[j]
-        var beforeGap = j + 1 < root.samples.length && (root.samples[j + 1].sourceIndex > current.sourceIndex + 1 || (root.expectedStep > 0 && root.samples[j + 1].time - current.time > root.expectedStep * 1.8))
-        var afterGap = j > 0 && (current.sourceIndex > root.samples[j - 1].sourceIndex + 1 || (root.expectedStep > 0 && current.time - root.samples[j - 1].time > root.expectedStep * 1.8))
-        if (j === root.samples.length - 1 || beforeGap || afterGap) {
-          ctx.beginPath(); ctx.arc(root.pointX(j), root.pointY(current.close), Style.space(2.5), 0, Math.PI * 2); ctx.fill()
-        }
-      }
+      ctx.beginPath(); ctx.arc(root.pointX(last), root.pointY(root.samples[last].close), Style.space(2.5), 0, Math.PI * 2); ctx.fill()
     }
+  }
+  Text { id: axisMeasure; visible:false; text: root.axisPrice(root.priceScale.max); font.family:Style.font.family; font.pixelSize:Style.font.caption }
+  Text { id: closeMeasure; visible:false; text: MarketModel.formatPrice(root.maxVal,undefined,root.currency,true); font.family:Style.font.family; font.pixelSize:Style.font.caption }
+  Repeater {
+    model: root.hasData ? root.priceScale.ticks : []
+    Text {
+      required property real modelData
+      x:root.plotRight + Style.space(7); y:root.pointY(modelData)-height/2
+      width:root.priceAxisWidth-Style.space(7)
+      text:root.axisPrice(modelData); elide:Text.ElideRight
+      font.family:Style.font.family; font.pixelSize:Style.font.caption; color:tokens.muted
+    }
+  }
+  Rectangle {
+    visible:root.hovered; x:root.plotLeft; y:root.hoverY
+    width:root.plotRight-root.plotLeft; height:1; color:Util.alpha(Color.foreground,0.35)
   }
   Rectangle {
     anchors.fill: parent; color: "transparent"; radius: Style.space(4)
@@ -159,8 +181,9 @@ Item {
   Row {
     anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
     visible: root.hasData
-    Text { width: parent.width / 2; text: root.axisTime(root.hasData ? root.samples[0].time : 0); color: tokens.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
-    Text { width: parent.width / 2; horizontalAlignment: Text.AlignRight; text: root.samples.length > 1 ? root.axisTime(root.samples[root.samples.length - 1].time) : "1 observation"; color: tokens.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+    Text { width: root.plotRight / 3; text: root.axisTime(root.hasData ? root.samples[0].time : 0); color: tokens.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+    Text { width: root.plotRight / 3; horizontalAlignment: Text.AlignHCenter; text: root.samples.length > 2 ? root.axisTime(root.samples[Math.floor(root.samples.length / 2)].time) : ""; color: tokens.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+    Text { width: root.plotRight / 3; horizontalAlignment: Text.AlignRight; text: root.samples.length > 1 ? root.axisTime(root.samples[root.samples.length - 1].time) : "1 observation"; color: tokens.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
   }
   MouseArea {
     id: pointer; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.LeftButton

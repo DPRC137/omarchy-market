@@ -21,8 +21,8 @@ No accounts, API keys, npm packages, or background daemons.
 ## Native redesign (unreleased)
 
 The watchlist now supports local filtering, categories and view-only sorting.
-Detail emphasizes price, movement and source currency, with timestamp-scaled
-history and keyboard inspection. Manage groups discovery, contextual row actions,
+Detail emphasizes price, movement and source currency, with session-aware
+history, a labelled price scale and keyboard inspection. Manage groups discovery, contextual row actions,
 pinning and rotation. The native header stays available while content scrolls.
 
 ## Screenshots
@@ -33,7 +33,7 @@ Omarchy theme in a temporary capture process.
 
 | Watchlist | Asset detail |
 | --- | --- |
-| <img src="docs/screenshots/redesign/watchlist.png" alt="Native watchlist with filter, categories, sorting, source currencies and freshness" width="420"> | <img src="docs/screenshots/redesign/equity-closed.png" alt="TSLA detail with price, regular-session history, metrics and collapsed diagnostics" width="420"> |
+| <img src="docs/screenshots/redesign/watchlist.png" alt="Native watchlist with filter, categories, sorting, source currencies and freshness" width="420"> | <img src="docs/screenshots/chart-windows/aapl-month.png" alt="AAPL monthly chart with continuous session spacing and selected-window closing-price statistics" width="420"> |
 
 | Manage | Search |
 | --- | --- |
@@ -119,7 +119,9 @@ Remove with `omarchy plugin remove io.github.dpr.omarchy-market`.
 - **Escape**: Back from detail/Manage, then close. **R** refreshes outside search;
   **/** opens Manage and focuses search. Search supports Up/Down and Enter.
 - Hover or focus the chart and use Left/Right, Home/End for actual candle time
-  and price. Chart times use your local timezone.
+  and price. Chart times use your local timezone; equity spacing omits closed
+  periods. The selected window has its own change and high/low/average close
+  overview. Expand the latest-session/24-hour snapshot for current daily volume.
 
 Stale or missing quotes trigger automatic recovery, with attempts limited to
 once per provider every 15 seconds. Refresh replaces outstanding quote requests
@@ -146,7 +148,8 @@ bash tests/lint_qml.sh        # Qt/Quattro imports required
 node tests/run_native.js      # real QML XHR, deadlines, settings restart, cleanup
 node tests/run_ui.js          # real Wayland popup, pointer and keyboard checks
 node tests/run_ui.js ticker   # compact bar, hover, direct asset chart and rotation
-node tests/run_ui.js chart    # gaps, single/empty history and keyboard inspection
+node tests/run_ui.js chart    # session axis, curve geometry and inspection
+node tests/run_ui.js window   # timeframe stats and stale/missing/single states
 node tests/capture_ui.js      # native fixture screenshots; no live requests
 node tests/run_ui.js equity   # optional live Yahoo session-chart regression
 ./scripts/live-test.sh        # optional external WebSocket connectivity

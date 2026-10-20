@@ -109,3 +109,24 @@ before rendering. Screenshots default to `/tmp/market-redesign-captures`; use
 `MARKET_CAPTURE_DIR` to choose another output directory. `MARKET_CAPTURE_REPO`
 allows the same capture workload to run against a preserved baseline checkout.
 The private capture host starts no market providers and changes no user settings.
+
+## Chart-window follow-up
+
+`node tests/run_ui.js window` drives the real detail component through all four
+ranges and checks selected-window returns, extrema, mean, currency, stale cache,
+loading, absent history and one close, independently of the current daily quote.
+The portable suite includes the production statistics and adapted curve geometry:
+exact observations, no overshoot, no mutation, slope/Bezier reference vectors,
+readable price ticks and missing/flat histories. `node tests/run_ui.js chart`
+also verifies closure compression and actual timestamp/price inspection.
+
+The live equity harness accepts `MARKET_EQUITY_ASSET` and `MARKET_EQUITY_RANGE`
+(default TSLA/1D). For example:
+
+```bash
+MARKET_EQUITY_ASSET=AAPL MARKET_EQUITY_RANGE=1M \
+  MARKET_EQUITY_CAPTURE=/tmp/aapl-month.png node tests/run_ui.js equity
+```
+
+Its screenshot includes the real native card. It checks that the selected-window
+summary matches the actual returned history. See [chart-window evidence](CHART_WINDOWS.md).

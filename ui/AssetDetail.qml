@@ -13,6 +13,7 @@ Column {
   signal timeframeSelected(string value)
   property bool comparisonOpen: false
   property bool diagnosticsOpen: false
+  property bool snapshotOpen: false
   readonly property var quote: service && revision >= 0 ? service.getQuote(asset) : MarketModel.createEmptyQuote(asset)
   readonly property bool isStock: quote.assetClass === "stock"
   readonly property var candles: service && revision >= 0 ? service.getCandles(asset, timeframe) : []
@@ -23,7 +24,7 @@ Column {
   readonly property color movementColor: quote.change24h === null ? tokens.muted : quote.change24h >= 0 ? tokens.positive : tokens.negative
   spacing: Style.space(12)
   MarketTokens { id: tokens }
-  onAssetChanged: { comparisonOpen = false; diagnosticsOpen = false }
+  onAssetChanged: { comparisonOpen = false; diagnosticsOpen = false; snapshotOpen = false }
 
   Column {
     width: parent.width; spacing: Style.space(4)
@@ -58,6 +59,7 @@ Column {
     Flow {
       width: parent.width; spacing: Style.space(8)
       Text {
+        objectName: "quote-change"
         text: MarketModel.formatPercentage(root.quote.change24h)
         font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true; color: root.movementColor
       }
@@ -90,15 +92,20 @@ Column {
     }
     SparklineChart {
       objectName: "market-chart"; width: parent.width; height: Style.space(170)
-      points: root.candles; timeframe: root.timeframe
+      points: root.candles; timeframe: root.timeframe; tradingSessions: root.isStock
       interval: root.chartEntry ? root.chartEntry.interval : ""
       currency: root.chartEntry ? root.chartEntry.currency : root.quote.currency || ""
       emptyText: root.chartState === "loading" ? "Loading history…" : "No price history available"
       isPositive: root.candles.length >= 2 ? root.candles[root.candles.length - 1].close >= root.candles[0].close : true
     }
+    WindowSummary {
+      width: parent.width
+      points: root.candles; timeframe: root.timeframe; historyState: root.chartState
+      currency: root.chartEntry ? root.chartEntry.currency : root.quote.currency || ""
+    }
     Text {
       objectName: "history-status"; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
-      text: (root.chartState === "loading" ? "Loading history…" : root.chartState === "unavailable" ? "History unavailable · " + root.chartError : root.chartState === "stale" ? "Stale cached history · " + (root.chartError || "Refresh to update") : root.candles.length === 1 ? "1 candle available; waiting for more" : root.candles.length === 0 ? "No history for this period" : "History updated " + MarketModel.formatAge(root.chartEntry ? root.chartEntry.savedAt : 0, root.service ? root.service.now : Date.now())) + (root.chartEntry && root.chartEntry.windowLabel ? "\n" + root.chartEntry.windowLabel + (root.chartEntry.sessionDate ? " · " + root.chartEntry.sessionDate : "") : "") + "\n" + "Trade candles · " + (root.chartEntry ? root.chartEntry.currency + " · " + root.chartEntry.interval : root.quote.currency || "Currency pending") + " · Local time"
+      text: (root.chartState === "loading" ? "Loading history…" : root.chartState === "unavailable" ? "History unavailable · " + root.chartError : root.chartState === "stale" ? "Stale cached history · " + (root.chartError || "Refresh to update") : root.candles.length === 1 ? "1 candle available; waiting for more" : root.candles.length === 0 ? "No history for this period" : "History updated " + MarketModel.formatAge(root.chartEntry ? root.chartEntry.savedAt : 0, root.service ? root.service.now : Date.now())) + (root.chartEntry && root.chartEntry.windowLabel ? "\n" + root.chartEntry.windowLabel + (root.chartEntry.sessionDate ? " · " + root.chartEntry.sessionDate : "") : "") + "\n" + "Trade closes · " + (root.chartEntry ? root.chartEntry.currency + " · " + root.chartEntry.interval : root.quote.currency || "Currency pending") + (root.isStock ? " · Trading sessions" : "") + " · Local time"
       font.family: Style.font.family; font.pixelSize: Style.font.caption; color: tokens.muted
     }
     MarketAction {
@@ -109,12 +116,14 @@ Column {
   Rectangle { width: parent.width; height: 1; color: tokens.divider }
   Column {
     width: parent.width; spacing: Style.space(7)
-    Text {
-      text: root.isStock ? "REGULAR SESSION" : "PAST 24 HOURS"
-      font.family: Style.font.family; font.pixelSize: Style.font.caption; font.letterSpacing: 1; color: tokens.muted
+    MarketAction {
+      objectName: "latest-snapshot"
+      width: Math.min(implicitWidth,parent.width)
+      text: (root.snapshotOpen ? "▾ " : "▸ ") + (root.isStock ? "Latest regular session" : "24-hour snapshot")
+      onClicked: root.snapshotOpen = !root.snapshotOpen
     }
     Flow {
-      width: parent.width; spacing: Style.space(10)
+      width: parent.width; spacing: Style.space(10); visible: root.snapshotOpen
       Repeater {
         model: [ { label: "High", value: MarketModel.formatPrice(root.quote.high24h, undefined, root.quote.currency) }, { label: "Low", value: MarketModel.formatPrice(root.quote.low24h, undefined, root.quote.currency) }, { label: "Volume", value: MarketModel.formatVolume(root.quote.volume24h, root.quote.volumeUnit) } ]
         Column {
@@ -130,7 +139,7 @@ Column {
   Rectangle { width: parent.width; height: 1; color: tokens.divider }
   Column {
     width: parent.width; spacing: Style.space(6)
-    MarketAction { text: (root.comparisonOpen ? "▾ " : "▸ ") + "Exchange comparison"; onClicked: root.comparisonOpen = !root.comparisonOpen }
+    MarketAction { width: Math.min(implicitWidth,parent.width); text: (root.comparisonOpen ? "▾ " : "▸ ") + "Exchange comparison"; onClicked: root.comparisonOpen = !root.comparisonOpen }
     Column {
       width: parent.width; spacing: Style.space(9); visible: root.comparisonOpen
       Repeater {
@@ -144,10 +153,10 @@ Column {
         }
       }
     }
-    MarketAction { text: (root.diagnosticsOpen ? "▾ " : "▸ ") + "Source & connection"; onClicked: root.diagnosticsOpen = !root.diagnosticsOpen }
+    MarketAction { width: Math.min(implicitWidth,parent.width); text: (root.diagnosticsOpen ? "▾ " : "▸ ") + "Source & connection"; onClicked: root.diagnosticsOpen = !root.diagnosticsOpen }
     Text {
       visible: root.diagnosticsOpen; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
-      text: MarketModel.providerDisplayName(root.quote.provider) + " · " + root.quote.symbol + " · " + root.quote.priceType + "\nConnection: " + (root.service && root.revision >= 0 ? root.service.getProviderStatus(root.quote.provider) : "DISCONNECTED") + " · Received " + MarketModel.formatAge(root.quote.receivedTimestamp, root.service ? root.service.now : Date.now()) + (root.service && root.service.getProviderError(root.quote.provider) ? "\n" + root.service.getProviderError(root.quote.provider) : "") + (root.candles.length ? "\nHistory: " + new Date(root.candles[0].time).toLocaleString() + " – " + new Date(root.candles[root.candles.length - 1].time).toLocaleString() : "")
+      text: MarketModel.providerDisplayName(root.quote.provider) + " · " + root.quote.symbol + " · " + root.quote.priceType + "\nConnection: " + (root.service && root.revision >= 0 ? root.service.getProviderStatus(root.quote.provider) : "DISCONNECTED") + " · Received " + MarketModel.formatAge(root.quote.receivedTimestamp, root.service ? root.service.now : Date.now()) + (root.service && root.service.getProviderError(root.quote.provider) ? "\n" + root.service.getProviderError(root.quote.provider) : "") + "\nCurve joins observed closes; inspection uses recorded prices and timestamps." + (root.candles.length ? "\nHistory: " + new Date(root.candles[0].time).toLocaleString() + " – " + new Date(root.candles[root.candles.length - 1].time).toLocaleString() : "")
       font.family: Style.font.family; font.pixelSize: Style.font.caption; color: tokens.muted
     }
   }
