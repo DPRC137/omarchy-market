@@ -1,0 +1,21 @@
+{
+  "method": "Fresh Python subprocess.run(node tests/capture_ui.js) and resource.getrusage(RUSAGE_CHILDREN); max RSS is maximum individual process, not sum",
+  "baseline_commit": "079c518",
+  "states": 11,
+  "baseline": {
+    "label": "baseline",
+    "exit_code": 0,
+    "wall_seconds": 8.718,
+    "max_process_rss_kib": 327452,
+    "user_seconds": 1.912,
+    "system_seconds": 0.497
+  },
+  "redesign": {
+    "label": "redesign",
+    "exit_code": 0,
+    "wall_seconds": 8.871,
+    "max_process_rss_kib": 337668,
+    "user_seconds": 4.394,
+    "system_seconds": 1.039
+  }
+}

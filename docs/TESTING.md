@@ -62,7 +62,7 @@ processes or changing the user's enabled plugins. The historical
 Never run live tests as a substitute for deterministic regressions. Never infer
 live-provider or rendered UI success from Node tests.
 
-## Evidence from this change
+## Historical 1.3.0 evidence
 
 Verified locally with Node 26.10.0, Quickshell 0.3.1 and installed Qt/Quattro:
 portable suite, fault suite, filtered qmllint, native HTTP/settings restart and
@@ -90,3 +90,22 @@ The [1.3.0 README gallery](screenshots/README.md) contains fresh captures of the
 final crypto/equity detail, watchlist and Manage screens, including the native
 card background and border. All market data in those captures came from live
 providers in an isolated host.
+
+## Unreleased native redesign
+
+See [the current validation record](NATIVE_REDESIGN.md) for commands, rendered
+states, integration fixes, resource comparison and remaining limits.
+`bash tests/run_tests.sh` additionally exercises the production watchlist view
+projection without mutating saved order. `node tests/run_ui.js` now covers
+search duplicate protection, actual Alt+arrow ordering, remove/Undo focus and
+narrow enlarged-text navigation bounds. `node tests/run_ui.js chart` covers
+single/empty history, timestamp spacing, invalid observations and real keyboard
+inspection. The standalone chart test explicitly requests Wayland keyboard
+focus, just as the production KeyboardPanel does.
+
+`node tests/capture_ui.js` captures the real popup card using normalized saved
+provider fixtures. It checks that the equity session and crypto quote are present
+before rendering. Screenshots default to `/tmp/market-redesign-captures`; use
+`MARKET_CAPTURE_DIR` to choose another output directory. `MARKET_CAPTURE_REPO`
+allows the same capture workload to run against a preserved baseline checkout.
+The private capture host starts no market providers and changes no user settings.

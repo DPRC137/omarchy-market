@@ -18,21 +18,29 @@ No accounts, API keys, npm packages, or background daemons.
 - **Watchlist management:** keyboard search, ordering and Undo, with existing
   watchlists and preferences preserved during migration.
 
+## Native redesign (unreleased)
+
+The watchlist now supports local filtering, categories and view-only sorting.
+Detail emphasizes price, movement and source currency, with timestamp-scaled
+history and keyboard inspection. Manage groups discovery, contextual row actions,
+pinning and rotation. The native header stays available while content scrolls.
+
 ## Screenshots
 
-Captured from the current native Quattro interface with live provider data.
-Prices and session dates reflect capture time; themes and scaling follow your
-Omarchy settings.
+Real Quickshell/Quattro popup captures using saved provider fixtures. These are
+reproducible UI examples, not current market prices. They use the active dark
+Omarchy theme in a temporary capture process.
 
-| Crypto detail | Equity detail while closed |
+| Watchlist | Asset detail |
 | --- | --- |
-| <img src="docs/screenshots/v1.3.0-crypto.png" alt="BTC chart with prominent ticker and a smaller USDT label beside the price" width="420"> | <img src="docs/screenshots/v1.3.0-equity.png" alt="TSLA chart showing the latest regular session and its date while the market is closed" width="420"> |
+| <img src="docs/screenshots/redesign/watchlist.png" alt="Native watchlist with filter, categories, sorting, source currencies and freshness" width="420"> | <img src="docs/screenshots/redesign/equity-closed.png" alt="TSLA detail with price, regular-session history, metrics and collapsed diagnostics" width="420"> |
 
-| Watchlist | Manage |
+| Manage | Search |
 | --- | --- |
-| <img src="docs/screenshots/v1.3.0-watchlist.png" alt="Compact crypto and equity watchlist with source currencies and freshness" width="420"> | <img src="docs/screenshots/v1.3.0-manage.png" alt="Manage screen with fixed bar ticker, optional rotation, search and watchlist ordering" width="420"> |
+| <img src="docs/screenshots/redesign/manage.png" alt="Search, contextual watchlist editing and bar display preferences" width="420"> | <img src="docs/screenshots/redesign/search.png" alt="Native symbol and name search with explicit addition state" width="420"> |
 
-[Capture details](docs/screenshots/README.md).
+[All captures and provenance](docs/screenshots/README.md) ·
+[Redesign verification and limits](docs/NATIVE_REDESIGN.md).
 
 ## Watchlist and detail
 
@@ -40,8 +48,10 @@ Click the bar ticker to open that instrument’s chart directly. Back shows comp
 watchlist rows. Select any row for source-labelled
 prices, regular-session equity metrics or rolling 24-hour crypto metrics, native
 Canvas history, and an expandable Spot/Perp comparison. Back returns to the list.
-Manage searches the local catalog and Yahoo stocks/ETFs; arrows and Enter add
-results, and removed rows have Undo. Up/down controls preserve watchlist order.
+Filter the watchlist by symbol, name or category; cycle Sort to compare movement
+without changing the saved order. Manage searches the local catalog and Yahoo
+stocks/ETFs; arrows and Enter add results, and removed rows have Undo. Each row’s
+Edit actions provide move, pin and remove controls; Alt+Up/Down reorders from Edit.
 Up to 20 instruments are supported; existing watchlists migrate in place.
 
 Headlines and history share one explicit instrument: Binance **USDT spot**,
@@ -108,7 +118,8 @@ Remove with `omarchy plugin remove io.github.dpr.omarchy-market`.
 - **Tab / Shift+Tab**: move between controls and rows. **Enter / Space** activates.
 - **Escape**: Back from detail/Manage, then close. **R** refreshes outside search;
   **/** opens Manage and focuses search. Search supports Up/Down and Enter.
-- Hover the chart for actual candle time and price.
+- Hover or focus the chart and use Left/Right, Home/End for actual candle time
+  and price. Chart times use your local timezone.
 
 Stale or missing quotes trigger automatic recovery, with attempts limited to
 once per provider every 15 seconds. Refresh replaces outstanding quote requests
@@ -135,6 +146,8 @@ bash tests/lint_qml.sh        # Qt/Quattro imports required
 node tests/run_native.js      # real QML XHR, deadlines, settings restart, cleanup
 node tests/run_ui.js          # real Wayland popup, pointer and keyboard checks
 node tests/run_ui.js ticker   # compact bar, hover, direct asset chart and rotation
+node tests/run_ui.js chart    # gaps, single/empty history and keyboard inspection
+node tests/capture_ui.js      # native fixture screenshots; no live requests
 node tests/run_ui.js equity   # optional live Yahoo session-chart regression
 ./scripts/live-test.sh        # optional external WebSocket connectivity
 ```

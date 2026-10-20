@@ -84,3 +84,24 @@ Verified provider/API assumptions against:
 Yahoo endpoints are unofficial and may fail or change. No availability guarantee
 is implied by deterministic tests. See TESTING.md for desktop versus portable
 verification boundaries.
+
+## Native view boundaries (unreleased redesign)
+
+`Panel.qml` owns navigation, debounced discovery, mutations and the visible-chart
+lifecycle. Its fixed header reflows independently of a single content scroller;
+focus changes scroll the active control into view. Deferred focus restoration
+checks the current view before running.
+
+- `ui/MarketTokens.qml` derives colors from the active popup palette and adjusts
+  secondary text/accent contrast toward its foreground.
+- `ui/WatchlistView.qml` and `models/WatchlistView.js` create an immutable local
+  filter/sort projection. They fetch no history and never persist view ordering.
+- `ui/AssetDetail.qml` renders one explicit source quote and history entry. Chart
+  inspection uses separate scene-graph items; unchanged candle content does not
+  trigger a Canvas redraw. Timestamp gaps remain visible rather than being filled.
+- `ui/ManageView.qml` presents discovery and contextual actions. Removal finishes
+  focus recovery in the parent component because the row is destroyed when the
+  ordered watchlist changes.
+
+Provider scheduling, service lifetime, persistence schema/category, the
+20-instrument limit and the bar widget remain as on the master baseline.
