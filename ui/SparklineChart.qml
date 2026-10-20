@@ -5,316 +5,167 @@ import "../models/MarketModel.js" as MarketModel
 
 Item {
   id: root
-
-  property var points: [] // Array of numbers or { close: number, ... }
+  property var points: []
   property bool isPositive: true
   property string currency: "USD"
-  property color positiveColor: "#26a69a"
-  property color negativeColor: "#ef5350"
-
-  readonly property color strokeColor: numericPoints.length < 2 ? Util.alpha(Color.foreground, 0.75) : isPositive ? positiveColor : negativeColor
-  readonly property var numericPoints: {
-    var arr = []
-    if (!points || points.length === 0) return []
-    for (var i = 0; i < points.length; i++) {
-      var raw = points[i]
-      var num = NaN
-      if (typeof raw === "number") {
-        num = raw
-      } else if (raw && typeof raw.close === "number") {
-        num = raw.close
-      } else if (raw && typeof raw.price === "number") {
-        num = raw.price
-      }
-      if (typeof num === "number" && Number.isFinite(num) && !isNaN(num)) {
-        arr.push(num)
-      }
-    }
-    return arr
+  property string timeframe: "1D"
+  property string interval: ""
+  property string emptyText: "No history available"
+  property color positiveColor: tokens.positive
+  property color negativeColor: tokens.negative
+  readonly property color strokeColor: samples.length < 2 ? Color.foreground : isPositive ? positiveColor : negativeColor
+  property var samples: []
+  property string dataKey: ""
+  readonly property var numericPoints: samples.map(function(p) { return p.close })
+  readonly property bool hasData: samples.length > 0
+  readonly property real minVal: hasData ? Math.min.apply(null, numericPoints) : 0
+  readonly property real maxVal: hasData ? Math.max.apply(null, numericPoints) : 0
+  readonly property real plotLeft: Style.space(5)
+  readonly property real plotRight: width - Style.space(5)
+  readonly property real plotTop: Style.space(40)
+  readonly property real plotBottom: height - Style.space(26)
+  readonly property real expectedStep: {
+    var match = /^(\d+)(m|h|d)$/.exec(interval)
+    return match ? Number(match[1]) * ({ m: 60000, h: 3600000, d: 86400000 }[match[2]]) : 0
   }
-
-  readonly property real minVal: {
-    var min = Infinity
-    for (var i = 0; i < numericPoints.length; i++) {
-      var v = numericPoints[i]
-      if (typeof v === "number" && Number.isFinite(v) && v < min) min = v
-    }
-    return min === Infinity ? 0 : min
-  }
-
-  readonly property real maxVal: {
-    var max = -Infinity
-    for (var i = 0; i < numericPoints.length; i++) {
-      var v = numericPoints[i]
-      if (typeof v === "number" && Number.isFinite(v) && v > max) max = v
-    }
-    return max === -Infinity ? 0 : max
-  }
-
-  readonly property bool hasData: numericPoints.length >= 1 && points && points.length >= 1
-  opacity: hasData ? 1.0 : 0.4
-  Behavior on opacity { NumberAnimation { duration: 150 } }
-
-  // Hover inspection state
   property bool hovered: false
   property int hoverIndex: -1
-  property var hoverCandle: null
-  property real hoverX: 0
-  property real hoverY: 0
+  readonly property var hoverCandle: hovered && hoverIndex >= 0 ? samples[hoverIndex] : null
+  readonly property real hoverX: hoverCandle ? pointX(hoverIndex) : 0
+  readonly property real hoverY: hoverCandle ? pointY(hoverCandle.close) : 0
+  activeFocusOnTab: hasData
+  Accessible.role: Accessible.Chart
+  Accessible.name: "Price history in " + currency
+  Accessible.description: hoverCandle ? formatCandleTime(hoverCandle.time) + ", " + MarketModel.formatPrice(hoverCandle.close, undefined, currency) : "Use left and right arrows to inspect observations"
+  MarketTokens { id: tokens }
 
-  function formatCandleTime(ts) {
-    if (!ts || ts <= 0) return "--"
-    var d = new Date(ts)
-    var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-    var mon = months[d.getMonth()] || ""
-    var day = d.getDate()
-    var hrs = ("0" + d.getHours()).slice(-2)
-    var mins = ("0" + d.getMinutes()).slice(-2)
-    return mon + " " + day + ", " + hrs + ":" + mins
+  function refreshSamples() {
+    var key = JSON.stringify(points || [])
+    if (key === dataKey) return
+    dataKey = key
+    var next = []
+    for (var i = 0; points && i < points.length; i++) {
+      var raw = points[i]
+      var value = typeof raw === "number" ? raw : raw ? (typeof raw.close === "number" ? raw.close : raw.price) : NaN
+      if (typeof value === "number" && Number.isFinite(value))
+        next.push({ close: value, time: raw && Number.isFinite(raw.time) ? raw.time : 0, sourceIndex: i })
+    }
+    if (!next.length && activeFocus) focus = false
+    samples = next
+    hovered = false
+    hoverIndex = -1
+    canvas.requestPaint()
   }
-
-  onPointsChanged: { hovered = false; hoverIndex = -1; hoverCandle = null; canvas.requestPaint() }
+  function pointX(index) {
+    if (samples.length <= 1) return (plotLeft + plotRight) / 2
+    var first = samples[0].time, last = samples[samples.length - 1].time
+    var ratio = last > first && first > 0 ? (samples[index].time - first) / (last - first) : index / (samples.length - 1)
+    return plotLeft + ratio * (plotRight - plotLeft)
+  }
+  function pointY(value) {
+    return plotTop + (maxVal === minVal ? 0.5 : (maxVal - value) / (maxVal - minVal)) * Math.max(0, plotBottom - plotTop)
+  }
+  function formatCandleTime(ts) {
+    return ts > 0 ? Qt.formatDateTime(new Date(ts), "MMM d, hh:mm") : "Observation"
+  }
+  function axisTime(ts) {
+    return ts > 0 ? Qt.formatDateTime(new Date(ts), timeframe === "1D" ? "hh:mm" : "MMM d") : ""
+  }
+  function setHoverPosition(mouseX, mouseY) {
+    if (!hasData) return
+    var index = 0, distance = Infinity
+    for (var i = 0; i < samples.length; i++) {
+      var delta = Math.abs(pointX(i) - mouseX)
+      if (delta < distance) { distance = delta; index = i }
+    }
+    hoverIndex = index; hovered = true
+  }
+  onPointsChanged: refreshSamples()
   onWidthChanged: canvas.requestPaint()
   onHeightChanged: canvas.requestPaint()
-  onIsPositiveChanged: canvas.requestPaint()
+  onStrokeColorChanged: canvas.requestPaint()
+  onExpectedStepChanged: canvas.requestPaint()
+  Component.onCompleted: refreshSamples()
+  Keys.onLeftPressed: { hoverIndex = Math.max(0, hovered ? hoverIndex - 1 : samples.length - 1); hovered = hasData }
+  Keys.onRightPressed: { hoverIndex = Math.min(samples.length - 1, hovered ? hoverIndex + 1 : 0); hovered = hasData }
+  Keys.onPressed: function(event) {
+    if (event.key === Qt.Key_Home || event.key === Qt.Key_End) {
+      hoverIndex = event.key === Qt.Key_Home ? 0 : samples.length - 1
+      hovered = hasData; event.accepted = true
+    }
+  }
+  onActiveFocusChanged: if (!activeFocus && !pointer.containsMouse) hovered = false
 
+  // The price path repaints only for data, geometry or palette changes.
+  // Inspection uses scene-graph items, never a full Canvas repaint.
   Canvas {
     id: canvas
     anchors.fill: parent
-    renderTarget: Canvas.FramebufferObject
-    renderStrategy: Canvas.Threaded
-
     onPaint: {
       var ctx = getContext("2d")
       ctx.reset()
       ctx.clearRect(0, 0, width, height)
-
-      var padTop = Style.space(8)
-      var padBottom = Style.space(22)
-      var padLeft = Style.space(4)
-      var padRight = Style.space(8)
-
-      var drawW = width - padLeft - padRight
-      var drawH = height - padTop - padBottom
-
-      var pts = root.numericPoints
-      if (!root.hasData || !pts || pts.length === 0) {
-        return
+      if (!root.hasData) return
+      ctx.strokeStyle = Qt.rgba(root.strokeColor.r, root.strokeColor.g, root.strokeColor.b, 0.14)
+      ctx.lineWidth = 1
+      for (var line = 0; line < 3; line++) {
+        var y = root.plotTop + line * (root.plotBottom - root.plotTop) / 2
+        ctx.beginPath(); ctx.moveTo(root.plotLeft, y); ctx.lineTo(root.plotRight, y); ctx.stroke()
       }
-
-      var min = root.minVal
-      var max = root.maxVal
-      var range = max - min
-      if (range <= 0) range = max * 0.01 || 1
-
-      var coords = []
-      for (var i = 0; i < pts.length; i++) {
-        var x = padLeft + (pts.length === 1 ? 0.5 : i / (pts.length - 1)) * drawW
-        var normY = max === min ? 0.5 : (pts[i] - min) / range
-        var y = padTop + (1.0 - normY) * drawH
-        coords.push({ x: x, y: y })
-      }
-
-      var strokeCol = root.strokeColor
-      if (pts.length === 1) {
-        // A newly opened session can have exactly one real candle. Show the
-        // observation without duplicating it to manufacture a line.
-        ctx.beginPath()
-        ctx.arc(coords[0].x, coords[0].y, Style.space(4), 0, Math.PI * 2)
-        ctx.fillStyle = strokeCol
-        ctx.fill()
-        return
-      }
-      var fillBase = Qt.rgba(strokeCol.r, strokeCol.g, strokeCol.b, 0.25)
-      var fillZero = Qt.rgba(strokeCol.r, strokeCol.g, strokeCol.b, 0.0)
-
-      // 1. Draw smooth gradient area under curve
       ctx.beginPath()
-      ctx.moveTo(coords[0].x, height - padBottom)
-      ctx.lineTo(coords[0].x, coords[0].y)
-      for (var j = 1; j < coords.length; j++) {
-        var prev = coords[j - 1]
-        var curr = coords[j]
-        var midX = (prev.x + curr.x) / 2
-        ctx.bezierCurveTo(midX, prev.y, midX, curr.y, curr.x, curr.y)
+      for (var i = 0; i < root.samples.length; i++) {
+        var p = root.samples[i], prev = i > 0 ? root.samples[i - 1] : null
+        var gap = prev && (p.sourceIndex > prev.sourceIndex + 1 || (root.expectedStep > 0 && p.time - prev.time > root.expectedStep * 1.8))
+        if (i === 0 || gap) ctx.moveTo(root.pointX(i), root.pointY(p.close))
+        else ctx.lineTo(root.pointX(i), root.pointY(p.close))
       }
-      ctx.lineTo(coords[coords.length - 1].x, height - padBottom)
-      ctx.closePath()
-
-      var grad = ctx.createLinearGradient(0, padTop, 0, height - padBottom)
-      grad.addColorStop(0.0, fillBase)
-      grad.addColorStop(1.0, fillZero)
-      ctx.fillStyle = grad
-      ctx.fill()
-
-      // 2. Draw curve stroke
-      ctx.beginPath()
-      ctx.moveTo(coords[0].x, coords[0].y)
-      for (var k = 1; k < coords.length; k++) {
-        var p0 = coords[k - 1]
-        var p1 = coords[k]
-        var mx = (p0.x + p1.x) / 2
-        ctx.bezierCurveTo(mx, p0.y, mx, p1.y, p1.x, p1.y)
-      }
-      ctx.strokeStyle = strokeCol
-      ctx.lineWidth = Style.space(2)
-      ctx.stroke()
-
-      // 3. Glowing dot on last point (if not hovering)
-      if (!root.hovered) {
-        var last = coords[coords.length - 1]
-        ctx.beginPath()
-        ctx.arc(last.x, last.y, Style.space(4), 0, Math.PI * 2)
-        ctx.fillStyle = strokeCol
-        ctx.fill()
-
-        ctx.beginPath()
-        ctx.arc(last.x, last.y, Style.space(8), 0, Math.PI * 2)
-        ctx.fillStyle = Qt.rgba(strokeCol.r, strokeCol.g, strokeCol.b, 0.35)
-        ctx.fill()
-      }
-
-      // 4. Draw hover crosshair and highlighted point
-      if (root.hovered && root.hoverIndex >= 0 && root.hoverIndex < coords.length) {
-        var hc = coords[root.hoverIndex]
-
-        ctx.beginPath()
-        ctx.moveTo(hc.x, padTop)
-        ctx.lineTo(hc.x, height - padBottom)
-        ctx.strokeStyle = Util.alpha(Color.foreground, 0.3)
-        ctx.lineWidth = 1
-        ctx.setLineDash([3, 3])
-        ctx.stroke()
-        ctx.setLineDash([])
-
-        ctx.beginPath()
-        ctx.arc(hc.x, hc.y, Style.space(4), 0, Math.PI * 2)
-        ctx.fillStyle = strokeCol
-        ctx.fill()
-
-        ctx.beginPath()
-        ctx.arc(hc.x, hc.y, Style.space(8), 0, Math.PI * 2)
-        ctx.fillStyle = Qt.rgba(strokeCol.r, strokeCol.g, strokeCol.b, 0.45)
-        ctx.fill()
+      ctx.strokeStyle = root.strokeColor; ctx.lineWidth = Style.space(2); ctx.lineJoin = "round"; ctx.stroke()
+      // Render observations bounding each gap, including isolated sessions.
+      ctx.fillStyle = root.strokeColor
+      for (var j = 0; j < root.samples.length; j++) {
+        var current = root.samples[j]
+        var beforeGap = j + 1 < root.samples.length && (root.samples[j + 1].sourceIndex > current.sourceIndex + 1 || (root.expectedStep > 0 && root.samples[j + 1].time - current.time > root.expectedStep * 1.8))
+        var afterGap = j > 0 && (current.sourceIndex > root.samples[j - 1].sourceIndex + 1 || (root.expectedStep > 0 && current.time - root.samples[j - 1].time > root.expectedStep * 1.8))
+        if (j === root.samples.length - 1 || beforeGap || afterGap) {
+          ctx.beginPath(); ctx.arc(root.pointX(j), root.pointY(current.close), Style.space(2.5), 0, Math.PI * 2); ctx.fill()
+        }
       }
     }
   }
-
-  // Hover micro-badge tooltip
-  BorderSurface {
-    id: hoverBadge
-    visible: root.hovered && root.hoverCandle !== null
-    z: 10
-    x: Math.max(Style.space(4), Math.min(parent.width - width - Style.space(4), root.hoverX - width / 2))
-    y: Style.space(2)
-    implicitWidth: badgeRow.implicitWidth + Style.space(12)
-    implicitHeight: Style.space(20)
-    radius: Style.space(3)
-    color: Color.background
-    borderSpec: Border.flat(Color.accent, 1)
-
-    Row {
-      id: badgeRow
-      anchors.centerIn: parent
-      spacing: Style.space(6)
-
-      Text {
-        text: root.formatCandleTime(root.hoverCandle ? root.hoverCandle.time : 0)
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-        color: Color.muted
-      }
-
-      Text {
-        text: MarketModel.formatPrice(root.hoverCandle ? (typeof root.hoverCandle.close === "number" ? root.hoverCandle.close : (root.hoverCandle.price || 0)) : 0, undefined, root.currency)
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-        font.bold: true
-        color: Color.foreground
-      }
-    }
+  Rectangle {
+    anchors.fill: parent; color: "transparent"; radius: Style.space(4)
+    border.width: root.activeFocus ? 1 : 0; border.color: Color.accent
   }
-
-  function setHoverPosition(mouseX, mouseY) {
-    if (!root.hasData || !root.points || root.points.length === 0) {
-      root.hovered = false
-      root.hoverIndex = -1
-      root.hoverCandle = null
-      return
-    }
-    var padLeft = Style.space(4)
-    var padRight = Style.space(8)
-    var drawW = width - padLeft - padRight
-    if (drawW <= 0) return
-
-    var clampedX = Math.max(padLeft, Math.min(width - padRight, mouseX))
-    var ratio = (clampedX - padLeft) / drawW
-    var len = root.points.length
-    var idx = len > 1 ? Math.round(ratio * (len - 1)) : 0
-    idx = Math.max(0, Math.min(len - 1, idx))
-
-    root.hoverIndex = idx
-    root.hoverCandle = root.points[idx]
-    root.hoverX = padLeft + (len > 1 ? (idx / (len - 1)) * drawW : drawW / 2)
-
-    var min = root.minVal
-    var max = root.maxVal
-    var range = max - min
-    if (range <= 0 || !Number.isFinite(range)) range = (Number.isFinite(max) && max > 0) ? (max * 0.01) : 1
-    var padTop = Style.space(8)
-    var padBottom = Style.space(22)
-    var drawH = height - padTop - padBottom
-    var ptVal = (root.numericPoints && root.numericPoints.length > idx) ? root.numericPoints[idx] : 0
-    var normY = (Number.isFinite(ptVal) && Number.isFinite(min)) ? (ptVal - min) / range : 0.5
-    if (!Number.isFinite(normY)) normY = 0.5
-    root.hoverY = padTop + (1.0 - normY) * drawH
-
-    root.hovered = true
-    canvas.requestPaint()
+  Text {
+    anchors.centerIn: parent; width: parent.width - Style.space(24)
+    visible: !root.hasData; text: root.emptyText; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
+    font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; color: tokens.muted
   }
-
-  MouseArea {
-    id: hoverArea
-    anchors.fill: parent
-    hoverEnabled: true
-    acceptedButtons: Qt.NoButton
-
-    onPositionChanged: function(mouse) {
-      root.setHoverPosition(mouse.x, mouse.y)
-    }
-
-    onExited: {
-      root.hovered = false
-      root.hoverIndex = -1
-      root.hoverCandle = null
-      canvas.requestPaint()
-    }
+  Rectangle {
+    visible: root.hovered; x: root.hoverX; y: root.plotTop
+    width: 1; height: Math.max(0, root.plotBottom - root.plotTop); color: Util.alpha(Color.foreground, 0.35)
   }
-
-  // Min / Max labels (Clean formatted currency with high contrast)
+  Rectangle {
+    visible: root.hovered; x: root.hoverX - width / 2; y: root.hoverY - height / 2
+    width: Style.space(7); height: width; radius: width / 2; color: root.strokeColor
+    border.width: 1; border.color: Color.background
+  }
+  Text {
+    x: Style.space(5); y: Style.space(6); width: parent.width - Style.space(10)
+    visible: root.hoverCandle !== null
+    text: root.hoverCandle ? root.formatCandleTime(root.hoverCandle.time) + "  ·  " + MarketModel.formatPrice(root.hoverCandle.close, undefined, root.currency) : ""
+    elide: Text.ElideRight; font.family: Style.font.family; font.pixelSize: Style.font.caption; color: Color.foreground
+  }
   Row {
-    anchors.left: parent.left
-    anchors.right: parent.right
-    anchors.bottom: parent.bottom
-    anchors.leftMargin: Style.space(6)
-    anchors.rightMargin: Style.space(6)
-
-    Text {
-      text: "L: " + (root.minVal > 0 ? MarketModel.formatPrice(root.minVal, undefined, root.currency) : "--")
-      font.family: Style.font.family
-      font.pixelSize: Style.font.caption
-      font.bold: true
-      color: Util.alpha(Color.foreground, 0.75)
-    }
-
-    Item { width: Math.max(1, parent.width - parent.children[0].width - parent.children[2].width); height: 1 }
-
-    Text {
-      text: "H: " + (root.maxVal > 0 ? MarketModel.formatPrice(root.maxVal, undefined, root.currency) : "--")
-      font.family: Style.font.family
-      font.pixelSize: Style.font.caption
-      font.bold: true
-      color: Util.alpha(Color.foreground, 0.75)
-    }
+    anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+    visible: root.hasData
+    Text { width: parent.width / 2; text: root.axisTime(root.hasData ? root.samples[0].time : 0); color: tokens.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+    Text { width: parent.width / 2; horizontalAlignment: Text.AlignRight; text: root.samples.length > 1 ? root.axisTime(root.samples[root.samples.length - 1].time) : "1 observation"; color: tokens.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+  }
+  MouseArea {
+    id: pointer; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.LeftButton
+    onPressed: function(mouse) { root.forceActiveFocus(); root.setHoverPosition(mouse.x, mouse.y) }
+    onPositionChanged: function(mouse) { root.setHoverPosition(mouse.x, mouse.y) }
+    onExited: if (!root.activeFocus) root.hovered = false
   }
 }
