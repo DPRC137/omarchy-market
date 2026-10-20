@@ -2,6 +2,7 @@ import QtQuick
 import QtCore
 import "models/MarketModel.js" as MarketModel
 import "models/History.js" as History
+import "models/Recovery.js" as Recovery
 import "providers"
 
 Item {
@@ -17,6 +18,8 @@ Item {
   property double now: Date.now()
   property var quotesByAssetProvider: ({})
   property var history: null
+  property var recovery: null
+  readonly property bool refreshing: binance.client.busy || coinbase.client.busy || hyperliquid.client.busy || yahoo.client.busy
   property string visibleAsset: ""
   property string visibleRange: "1D"
   property var removedItem: null
@@ -87,10 +90,13 @@ Item {
   function searchMarkets(query) { return MarketModel.searchCatalog(query) }
   function isInWatchlist(asset) { return watchlist.indexOf(asset) >= 0 }
   function syncProviders() {
-    binance.updateSubscriptions(watchlist)
-    coinbase.updateSubscriptions(watchlist)
-    hyperliquid.updateSubscriptions(watchlist)
-    yahoo.updateSubscriptions(watchlist)
+    [binance, coinbase, hyperliquid, yahoo].forEach(function(p) {
+      var previous = JSON.stringify(p.targetAssets)
+      p.updateSubscriptions(root.watchlist)
+      // Subscription changes already fetch a snapshot. Allow it to finish
+      // before missing-quote recovery attempts to repair the new stream.
+      if (root.recovery && previous !== JSON.stringify(p.targetAssets)) root.recovery.record(p.providerId)
+    })
   }
   BinanceProvider { id: binance; onQuoteReceived: function(asset, quote) { root.handleProviderQuote("binance", asset, quote) } }
   CoinbaseProvider { id: coinbase; onQuoteReceived: function(asset, quote) { root.handleProviderQuote("coinbase", asset, quote) } }
@@ -146,19 +152,27 @@ Item {
   function fetchQuote(asset) { if (MarketModel.selectedProvider(asset) === "yahoo") yahoo.fetchQuote(asset) }
   function searchYahooMarkets(query, callback) { yahoo.searchSymbols(query, callback) }
   function refresh() {
-    binance.fetchSnapshot(); coinbase.fetchSnapshot(); hyperliquid.fetchSnapshot(); yahoo.fetchSnapshot()
+    [binance, coinbase, hyperliquid, yahoo].forEach(function(p) {
+      if (root.recovery) root.recovery.record(p.providerId)
+      p.refresh(true)
+    })
     if (visibleAsset) fetchCandles(visibleAsset, visibleRange, true)
   }
   Timer { id: batch; interval: 100; onTriggered: root.updateRevision++ }
   Timer {
     interval: 1000; running: true; repeat: true
-    onTriggered: { root.now = Date.now(); root.updateRevision++; if (root.history) root.history.expire() }
+    onTriggered: {
+      root.now = Date.now(); root.updateRevision++
+      if (root.history) root.history.expire()
+      if (root.recovery) root.recovery.tick([binance, coinbase, hyperliquid, yahoo], function(asset, id) { return root.getProviderQuote(asset, id); })
+    }
   }
   Timer {
     interval: 60000; running: root.visibleAsset !== ""; repeat: true
     onTriggered: root.fetchCandles(root.visibleAsset, root.visibleRange)
   }
   Component.onCompleted: {
+    recovery = Recovery.create(Date.now)
     history = History.create({
       enqueue: function(request, callback) { return root.provider(request.provider).client.enqueue(request, callback); },
       cancel: function(predicate) { [binance, coinbase, hyperliquid, yahoo].forEach(function(p) { p.client.cancel(function(r) { return r.kind === "history" && predicate(r); }); }); }

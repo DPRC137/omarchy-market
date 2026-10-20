@@ -11,6 +11,7 @@ Item {
   property var targetAssets: []
   property bool active: false
   property double lastUpdateTimestamp: 0
+  property double lastReconnectTimestamp: 0
   property alias client: http
   readonly property bool childProcessRunning: bridge.running
   signal quoteReceived(string asset, var quote)
@@ -46,6 +47,19 @@ Item {
     quoteReceived(quote.asset, quote)
   }
   function fetchMetaAndContexts() { fetchSnapshot() }
+  function refresh(force) {
+    if (!active) return
+    // Repair the stream as well as fetching REST data. Throttle repeated clicks
+    // and stale checks so an outage cannot cause a reconnect loop.
+    if (providerId !== "hyperliquid" && Date.now() - lastReconnectTimestamp >= 30000) {
+      lastReconnectTimestamp = Date.now()
+      restartTimer.stop()
+      if (bridge.running) bridge.write(JSON.stringify({ action: "reconnect" }) + "\n")
+      else bridge.running = true
+    }
+    if (force) http.cancel(function(r) { return r.kind === "quote"; })
+    fetchSnapshot()
+  }
   function fetchSnapshot() {
     if (!active) return
     var req = { key: providerId + ":snapshot", kind: "quote", priority: 10 }
@@ -59,7 +73,10 @@ Item {
       targetAssets.forEach(function(asset) {
         var product = MarketModel.getCatalogItem(asset).providers.coinbase
         http.enqueue({ key: "coinbase:" + asset, asset: asset, kind: "quote", priority: 10, url: "https://api.exchange.coinbase.com/products/" + product + "/stats" }, function(result) {
+          if (result.cancelled || !root.active || root.targetAssets.indexOf(asset) < 0) return
+          if (result.error) { root.lastError = result.error; return }
           if (result.data) {
+            root.lastError = ""
             var d = result.data
             accept(MarketModel.normalizeCoinbaseTicker({ product_id: product, price: d.last, open_24h: d.open, high_24h: d.high, low_24h: d.low, volume_24h: d.volume }, Date.now()))
           }

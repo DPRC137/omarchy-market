@@ -110,6 +110,12 @@ Remove with `omarchy plugin remove io.github.dpr.omarchy-market`.
   **/** opens Manage and focuses search. Search supports Up/Down and Enter.
 - Hover the chart for actual candle time and price.
 
+Stale or missing quotes trigger automatic recovery, with attempts limited to
+once per provider every 15 seconds. Refresh replaces outstanding quote requests
+and reconnects streams, with a 30-second reconnect cooldown. The button shows
+“Refreshing…” while requests are pending. Provider outages can still delay new data;
+the last received values stay labelled stale until an update succeeds.
+
 Existing `shell.json` widget settings remain supported:
 
 ```json

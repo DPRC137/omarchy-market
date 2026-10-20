@@ -15,12 +15,46 @@ ShellRoot {
   function check(condition, message) {
     if (!condition) { failed = true; console.error("NATIVE_FAIL", message) }
   }
+  function checkQuoteRefresh(provider, assets) {
+    var client = provider.client
+    client.cancel(function() { return true; })
+    if (client.scheduler) client.scheduler.stop()
+    var started = [], cancelled = false
+    var clock = Date.now()
+    if (provider.providerId === "yahoo") {
+      service.handleProviderQuote("yahoo", assets[0], Model.normalizeYahooChart({ chart: { result: [{ meta: { symbol: assets[0], currency: "USD", regularMarketPrice: 100, regularMarketTime: Math.floor(clock / 1000) - 1000 } }] } }, clock - 700000))
+      root.check(service.getProviderQuote(assets[0], "yahoo").freshness === "STALE", "Refresh regression did not start with a stale quote")
+    }
+    client.scheduler = Queue.create(function(request, callback) {
+      started.push({ request: request, done: callback })
+      return function() {}
+    }, function() { return clock; }, 100, 24)
+    client.enqueue({ key: "blocked-quote", kind: "quote" }, function(result) { cancelled = result.cancelled })
+    client.enqueue({ key: "keep-history", kind: "history", priority: 100 }, function() {})
+    client.enqueue({ key: "keep-search", kind: "search", priority: 80 }, function() {})
+    provider.refresh(true)
+    root.check(cancelled, "Refresh failed to replace a blocked quote")
+    root.check(service.refreshing, "Refresh did not expose request activity")
+    root.check(client.scheduler.pending.some(function(task) { return task.request.key === "keep-history" }), "Quote refresh cancelled history")
+    root.check(client.scheduler.pending.some(function(task) { return task.request.key === "keep-search" }), "Quote refresh cancelled search")
+    root.check(client.scheduler.pending.filter(function(task) { return task.request.kind === "quote" }).length === assets.length, "Refresh failed to schedule watched quotes")
+    // Release higher priority work, then deliver a real provider response.
+    client.cancel(function(r) { return r.kind !== "quote"; })
+    clock += 100; client.scheduler.pump()
+    var job = started[started.length - 1]
+    if (provider.providerId === "yahoo") {
+      job.done({ data: { chart: { result: [{ meta: { symbol: job.request.asset, currency: "USD", regularMarketPrice: 123, regularMarketTime: Math.floor(Date.now() / 1000) } }] } } })
+      root.check(service.getProviderQuote(job.request.asset, "yahoo").price === 123, "Refreshed quote did not reach the service")
+      root.check(service.getProviderQuote(job.request.asset, "yahoo").freshness === "CURRENT", "Refresh left the quote stale")
+    }
+    client.scheduler.stop()
+  }
   function done() {
     finished++
     if (finished === 6) {
       check(!service.provider("binance").childProcessRunning, "Binance process remained after stock-only migration")
       check(!service.provider("coinbase").childProcessRunning, "Coinbase process remained after stock-only migration")
-      if (!failed) console.log("NATIVE_PASS: QML service, stock-only cleanup, ordered undo, settings, search errors, HTTP parse/failure/Qt timeout/cancellation, empty-session recovery")
+      if (!failed) console.log("NATIVE_PASS: QML service, forced quote refresh and freshness recovery, stock-only cleanup, ordered undo, settings, search errors, HTTP parse/failure/Qt timeout/cancellation, empty-session recovery")
       Qt.quit()
     }
   }
@@ -54,6 +88,11 @@ ShellRoot {
       root.check(JSON.stringify(service.watchlist) === '["AAPL","MSFT"]', "Undo changed ordering")
       service.reorderMarket(1, 0)
       service.pinnedAsset = "MSFT"; service.rotationEnabled = true
+      root.checkQuoteRefresh(service.provider("yahoo"), service.watchlist)
+      var hyper = service.provider("hyperliquid")
+      hyper.targetAssets = ["BTC"]; hyper.active = true
+      root.checkQuoteRefresh(hyper, ["BTC"])
+      hyper.active = false; hyper.targetAssets = []
       // A failed production search must call back with an explicit error.
       // Replace only the transport, retaining the actual provider and scheduler.
       service.addMarket("TSLA")

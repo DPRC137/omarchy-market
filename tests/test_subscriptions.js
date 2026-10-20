@@ -23,7 +23,7 @@ function bridge(provider, initial) {
     clearTimeout: id => timers.delete(id), clearInterval: id => timers.delete(id)
   });
   vm.runInContext(code, context);
-  return { lines, sockets, timers, stdin, signals, command: symbols => input.emit('line', JSON.stringify({ action: 'set_subscriptions', symbols })), get exited() { return exited; } };
+  return { lines, sockets, timers, stdin, signals, reconnect: () => input.emit('line', '{"action":"reconnect"}'), command: symbols => input.emit('line', JSON.stringify({ action: 'set_subscriptions', symbols })), get exited() { return exited; } };
 }
 for (const provider of ['binance', 'coinbase']) {
   const b = bridge(provider, 'BTC,ETH');
@@ -51,5 +51,27 @@ for (const provider of ['binance', 'coinbase']) {
   b.stdin.emit('end');
   assert.equal(b.exited, true); assert.equal(b.timers.size, 0);
   const empty = bridge(provider, ''); assert.equal(empty.sockets.length, 0);
+  empty.reconnect(); assert.equal(empty.sockets.length, 0);
+  const stalled = bridge(provider, 'BTC');
+  assert.equal(stalled.timers.size, 1); // Deadline exists even before onopen.
+  [...stalled.timers.values()][0]();
+  assert.equal(stalled.sockets[0].closed, true);
+  assert.equal(stalled.sockets[0].onclose, null); // No close-event dependency.
+  assert.equal(stalled.lines.at(-1).status, 'RECONNECTING');
+  stalled.reconnect();
+  assert.equal(stalled.sockets.length, 2);
+  assert.equal(stalled.timers.size, 1);
+  stalled.sockets[1].onopen();
+  stalled.command(['ETH']);
+  stalled.reconnect();
+  assert.equal(stalled.sockets[1].closed, true);
+  assert.equal(stalled.sockets.length, 3);
+  stalled.sockets[2].onopen();
+  if (provider === 'coinbase') assert.deepEqual(Array.from(stalled.sockets[2].sent[0].product_ids), ['ETH-USD']);
+  else assert.ok(stalled.sockets[2].url.includes('ethusdt@ticker'));
+  [...stalled.timers.values()][0](); // Open socket goes silent and close emits nothing.
+  assert.equal(stalled.sockets[2].closed, true);
+  assert.equal(stalled.lines.at(-1).status, 'RECONNECTING');
+  stalled.stdin.emit('end'); assert.equal(stalled.timers.size, 0);
 }
 console.log('PASS actual bridge IPC, duplicate subscription suppression, empty subscriptions, reconnect cleanup and parent EOF');

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.1 — 2026-10-21
+
+- Recover stale or missing quotes automatically, with attempts throttled to
+  once per provider every 15 seconds while preserving closed-market freshness.
+- Make Refresh replace blocked quote requests and repair streaming connections,
+  with a 30-second reconnect cooldown and visible request progress.
+- Time out WebSocket connections that never open and reconnect silent sockets
+  without waiting for a close event. Preserve watchlists and existing settings.
+- Add deterministic recovery/bridge regressions and native QML refresh checks.
+
 ## 1.3.0 — 2026-10-18
 
 - Preserve quote currencies and instrument types, show time-based freshness,
