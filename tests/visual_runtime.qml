@@ -11,7 +11,20 @@ ShellRoot {
   property var fixture: __FIXTURE_DATA__
   property int step: 0
   property bool busy: false
-  property var shots: ["watchlist", "detail", "equity-closed", "manage", "search", "empty", "loading", "error", "single", "narrow-manage", "narrow-detail"]
+  property var shots: ["watchlist", "detail", "equity-closed", "manage", "search", "empty", "loading", "error", "single", "narrow-manage", "narrow-detail", "narrow-summary"]
+  function find(item,name) {
+    if(item.objectName===name)return item
+    for(var i=0;i<(item.children||[]).length;i++){var next=find(item.children[i],name);if(next)return next}
+    return null
+  }
+  function revealSummary() {
+    var item=find(panel.contentItem,"window-summary"), scroller=item
+    while(scroller && !("contentY" in scroller))scroller=scroller.parent
+    if(item && scroller) {
+      var position=item.mapToItem(scroller.contentItem,0,0)
+      scroller.contentY=Math.max(0,Math.min(scroller.contentHeight-scroller.height,position.y))
+    }
+  }
   function expectedView() {
     var name = shots[step]
     return name.indexOf("manage") >= 0 || name === "search" ? "manage" : name.indexOf("watchlist") >= 0 || name === "empty" ? "watchlist" : "detail"
@@ -72,6 +85,7 @@ ShellRoot {
     else if (name.indexOf("watchlist")>=0 || name==="empty") {panel.open()}
     else panel.openAsset(name==="detail"?"BTC":"TSLA")
     service.updateRevision++
+    if(name==="narrow-summary")Qt.callLater(root.revealSummary)
   }
   Timer {interval:500;running:true;onTriggered:{Style.fontBaseSize=12;root.configure()}}
   Timer {

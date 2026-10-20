@@ -72,7 +72,12 @@ returns an empty success, one `range=5d` recovery selects only the latest sessio
 with actual candles; it does not display five days under a one-day label. Session
 boundaries (including half days) come from Yahoo, without hardcoded exchange
 hours or holiday guesses. A first-session candle renders as one neutral point;
-no prices are manufactured to fill weekends or gaps. Genuinely empty data retains
+no prices are manufactured to fill weekends or gaps. The equity time axis uses
+logical observation indices, so non-trading periods occupy no empty chart width.
+Crypto retains timestamp spacing. The curve joins observed closes using the
+Steffen method from TradingView Lightweight Charts; it passes through each close
+and introduces no intervening extrema. Inspection always selects a recorded
+close and its original timestamp. Genuinely empty data retains
 stale cache when available, otherwise displays an explicit provider-data error
 without reserving a blank chart. Chart colour follows
 first-to-last movement in the selected range, independently of headline change.
@@ -83,3 +88,21 @@ Only an open detail view requests history. Changing view invalidates the old
 generation before cancelling work. The visible chart refreshes every minute;
 Refresh requests both quotes and visible history. Failures preserve existing
 history as stale cache with a retry action. Retry uses the same instrument.
+
+## Selected-window statistics
+
+The overview follows the active history range, source and currency. Change is
+`last close - first close`; percentage change divides that by the first close.
+These are price changes over the observed coverage, not total investment returns
+or comparisons to the current headline quote. High/low/average refer specifically
+to the sampled **closing prices**, not intrabar high/low. Average close is the
+arithmetic mean of valid observed closes, not a time-weighted value.
+
+Coverage dates and observation count are explicit. Empty history shows unavailable
+statistics; a single close has high/low/average but no change comparison. A flat
+window has a valid zero change. Stale cached statistics stay labelled; loading a
+new uncached range cannot retain the previous range's statistics. No window
+volume is inferred from the daily quote or unavailable candle data.
+
+The headline retains its daily comparison. Current regular-session or rolling
+24-hour high/low/volume remain in a separate expandable snapshot below the chart.

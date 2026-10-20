@@ -1,5 +1,22 @@
 # Screenshot provenance
 
+## Chart-window follow-up
+
+`chart-windows/*.png` captures the actual native card on 2026-10-21
+(Asia/Kolkata), including the theme background and border:
+
+- `aapl-month`: live Yahoo AAPL 1M history with 155 hourly closes, captured by
+  `MARKET_EQUITY_ASSET=AAPL MARKET_EQUITY_RANGE=1M` using the equity harness.
+  Quote, percentage and freshness are observations at capture time.
+- `equity-closed`: normalized saved Yahoo TSLA regular-session payload with
+  79 closes, rendered by `tests/capture_ui.js` in an isolated host.
+- `narrow-summary`: the same fixture at 300px width and enlarged text, scrolled
+  to show the complete selected-window overview and daily snapshot disclosure.
+
+These were inspected for price/time axes, continuous curve geometry, summary
+alignment, wrapping and clipping. See [chart-window validation](../CHART_WINDOWS.md).
+No user preferences or installed watchlist were changed by capture hosts.
+
 ## Unreleased native redesign
 
 `redesign/*.png` captures the actual Quickshell popup card, including Quattro’s

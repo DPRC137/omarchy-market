@@ -98,10 +98,17 @@ checks the current view before running.
   filter/sort projection. They fetch no history and never persist view ordering.
 - `ui/AssetDetail.qml` renders one explicit source quote and history entry. Chart
   inspection uses separate scene-graph items; unchanged candle content does not
-  trigger a Canvas redraw. Timestamp gaps remain visible rather than being filled.
+  trigger a Canvas redraw. Equity observations use logical bar spacing, while the curve joins only actual
+  observations and hover retains their source timestamps.
 - `ui/ManageView.qml` presents discovery and contextual actions. Removal finishes
   focus recovery in the parent component because the row is destroyed when the
   ordered watchlist changes.
 
 Provider scheduling, service lifetime, persistence schema/category, the
 20-instrument limit and the bar widget remain as on the master baseline.
+
+`models/HistoryStats.js` computes selected-window close statistics without changing
+cached data or fetching anything. `ui/WindowSummary.qml` renders them independently
+of the headline's daily quote. `models/ChartGeometry.js` adapts the Steffen curve
+kernel from TradingView Lightweight Charts and supplies the padded price scale;
+its source/license/changes are recorded under `third_party/lightweight-charts/`.
