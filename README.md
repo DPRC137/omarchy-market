@@ -28,16 +28,16 @@ pinning and rotation. The native header stays available while content scrolls.
 ## Screenshots
 
 Real Quickshell/Quattro popup captures using saved provider fixtures. These are
-reproducible UI examples, not current market prices. The second palette is applied
-only inside the temporary capture process; your desktop theme is unchanged.
+reproducible UI examples, not current market prices. They use the active dark
+Omarchy theme in a temporary capture process.
 
 | Watchlist | Asset detail |
 | --- | --- |
 | <img src="docs/screenshots/redesign/watchlist.png" alt="Native watchlist with filter, categories, sorting, source currencies and freshness" width="420"> | <img src="docs/screenshots/redesign/equity-closed.png" alt="TSLA detail with price, regular-session history, metrics and collapsed diagnostics" width="420"> |
 
-| Manage | Light palette |
+| Manage | Search |
 | --- | --- |
-| <img src="docs/screenshots/redesign/manage.png" alt="Search, contextual watchlist editing and bar display preferences" width="420"> | <img src="docs/screenshots/redesign/light-detail.png" alt="The same native session detail with a contrasting light palette" width="420"> |
+| <img src="docs/screenshots/redesign/manage.png" alt="Search, contextual watchlist editing and bar display preferences" width="420"> | <img src="docs/screenshots/redesign/search.png" alt="Native symbol and name search with explicit addition state" width="420"> |
 
 [All captures and provenance](docs/screenshots/README.md) ·
 [Redesign verification and limits](docs/NATIVE_REDESIGN.md).

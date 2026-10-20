@@ -11,7 +11,7 @@ ShellRoot {
   property var fixture: __FIXTURE_DATA__
   property int step: 0
   property bool busy: false
-  property var shots: ["watchlist", "detail", "equity-closed", "manage", "search", "empty", "loading", "error", "single", "light-watchlist", "light-detail", "narrow-manage", "narrow-detail"]
+  property var shots: ["watchlist", "detail", "equity-closed", "manage", "search", "empty", "loading", "error", "single", "narrow-manage", "narrow-detail"]
   function expectedView() {
     var name = shots[step]
     return name.indexOf("manage") >= 0 || name === "search" ? "manage" : name.indexOf("watchlist") >= 0 || name === "empty" ? "watchlist" : "detail"
@@ -61,17 +61,15 @@ ShellRoot {
   Market.Panel {id:panel;bar:bar;anchorItem:anchor}
   function configure() {
     var name=shots[step]
+    service.watchlist = name === "empty" ? [] : ["BTC", "TSLA", "ETH", "HYPE"]
     service.state = name === "loading" ? "loading" : name === "error" ? "unavailable" : "ready"
     panel.searchQuery=""
-    if (name.indexOf("light")===0) {
-      Color.background="#f5f2e9"; Color.foreground="#343b58"; Color.accent="#34548a"; Color.urgent="#8c4351";Color.muted="#6172b0";Color.shellValues={}
-    }
     if (name.indexOf("narrow")===0) {
       Style.fontBaseSize=18
       for(var i=0;i<panel.data.length;i++)if("contentWidth" in panel.data[i] && "owner" in panel.data[i]) panel.data[i].contentWidth=300
     }
     if (name.indexOf("manage")>=0 || name==="search") {panel.open();panel.view="manage";panel.searchQuery=name==="search"?"a":""}
-    else if (name.indexOf("watchlist")>=0 || name==="empty") {service.watchlist=name==="empty"?[]:["BTC","TSLA","ETH","HYPE"];panel.open()}
+    else if (name.indexOf("watchlist")>=0 || name==="empty") {panel.open()}
     else panel.openAsset(name==="detail"?"BTC":"TSLA")
     service.updateRevision++
   }

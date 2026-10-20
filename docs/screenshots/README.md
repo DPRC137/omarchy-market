@@ -11,16 +11,14 @@ unavailable quotes. These examples are not live market observations.
 
 - `watchlist`, `detail`, `equity-closed`, `manage`, `search`: primary screens.
 - `empty`, `loading`, `error`, `single`: deterministic state examples.
-- `light-watchlist`, `light-detail`: the same views in a contrasting light
-  palette applied only to the test process.
 - `narrow-manage`, `narrow-detail`: 300px card width and 18px base font;
   remaining content is scrollable and the navigation wraps without overlap.
-- `live-equity`: optional live Yahoo check, showing 66 candles for the
+- `live-equity`: optional live Yahoo check, showing 68 candles for the
   2026-10-20 regular session. This is a content-only grab; it excludes card
   background/border and the portion below the viewport.
 
 The screenshots were inspected for clipping, alignment, readable source/session
-labels, chart axes, state copy and navigation overflow. See
+labels, chart axes, state copy and navigation overflow in the active dark theme. See
 [validation notes](../NATIVE_REDESIGN.md) for the precise scope and limitations.
 
 ## Historical 1.3.0 gallery

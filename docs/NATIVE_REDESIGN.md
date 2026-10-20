@@ -1,6 +1,6 @@
 # Native redesign validation
 
-Unreleased work on `codex/native-market-redesign`, based on master `909f700`.
+Unreleased work on `codex/native-market-redesign`, integrated with master `079c518`.
 Validation completed on 2026-10-21 (Asia/Kolkata), using Node 26.10.0,
 Quickshell 0.3.1 and the installed Qt/Quattro modules.
 
@@ -19,10 +19,13 @@ chart and chart tests; the management agent supplied Manage and interaction test
 The integration pass completed their shared contracts, corrected defects, and
 performed native verification. No additional agents were started on resumption.
 
-The isolated checkout is separate from the original dirty checkout. Existing
-recovery/provider work there was not copied, committed or modified. This branch
-changes no production provider, service, settings schema, bar widget, deployment
-configuration or release version.
+The isolated checkout is separate from the original checkout. The unrelated
+recovery work was completed independently and arrived on master as `079c518`
+during final verification. That upstream commit was merged here, resolving only
+the navigation overlap and retaining both recovery and watchlist-projection tests.
+The original checkout was never edited by this task. Relative to current master,
+this branch changes no production provider, service, settings schema, bar widget,
+deployment configuration or release version.
 
 ## Passing checks
 
@@ -35,8 +38,8 @@ configuration or release version.
 | `node tests/run_ui.js` | PASS: real pointer navigation, search typing/arrows/Enter, duplicates, selector, Alt+arrow ordering and focus, remove/Undo and focus, enlarged text/narrow navigation bounds, closing history cleanup |
 | `node tests/run_ui.js chart` | PASS: empty/single observation, actual timestamp spacing/gaps, missing observations, keyboard inspection and unchanged-data inspection stability |
 | `node tests/run_ui.js ticker` | PASS: compact bar, stable hover width, hover guard cleanup, displayed-asset detail, exact currency, Back and optional rotation |
-| `node tests/run_ui.js equity` | PASS: live Yahoo TSLA quote and 66 real candles, session 2026-10-20, USD and session metadata; captured at price 375.50 while regular session was reported |
-| `node tests/capture_ui.js` | PASS: 13 real native card screenshots using normalized provider fixtures, dark/light palettes, 300px card and 18px base font |
+| `node tests/run_ui.js equity` | PASS: live Yahoo TSLA quote and 68 real candles, session 2026-10-20, USD and session metadata; captured at price 375.45 while regular session was reported |
+| `node tests/capture_ui.js` | PASS: 11 real native card screenshots using normalized provider fixtures, the active dark palette, 300px card and 18px base font |
 | `git diff --check` | PASS |
 
 Native checks used temporary settings. The capture host starts no providers.
@@ -77,17 +80,17 @@ Neither produced a test failure or a QML exception in the passing final runs.
 [Gallery and provenance](screenshots/README.md). The screenshots cover watchlist,
 crypto detail with stale/missing history, closed equity session with 79 saved
 candles, Manage, search results, empty/loading/unavailable/single-observation
-states, a contrasting light palette and narrow enlarged text. The live Yahoo
+states, the active dark palette and narrow enlarged text. The live Yahoo
 content capture is separate from those deterministic examples.
 
 Inspected actual rendered text, alignment, source/currency/session labels,
-chart axes, light-theme fills and narrow navigation. The header now wraps without
+chart axes, theme fills and narrow navigation. The header now wraps without
 covering controls; overflow content remains scrollable. The existing historical
 screenshots were also inspected as baseline context.
 
 ## Resource comparison
 
-The same 13-state fixture capture workload ran against preserved master and the
+The same 11-state fixture capture workload ran against preserved master and the
 redesign, each in a fresh Python wrapper using `subprocess.run` and
 `resource.getrusage(RUSAGE_CHILDREN)`. Both use native Quickshell and saved fixtures,
 with no provider requests. Raw observations are in
@@ -95,10 +98,10 @@ with no provider requests. Raw observations are in
 
 | Observation | Master baseline | Redesign |
 | --- | ---: | ---: |
-| Wall time | 10.805 s | 10.181 s |
-| Maximum process RSS | 330824 KiB | 341412 KiB |
-| User CPU time | 2.255 s | 4.909 s |
-| System CPU time | 0.588 s | 1.139 s |
+| Wall time | 8.718 s | 8.871 s |
+| Maximum process RSS | 327452 KiB | 337668 KiB |
+| User CPU time | 1.912 s | 4.394 s |
+| System CPU time | 0.497 s | 1.039 s |
 
 This is one short render/capture workload, including startup, layout, screenshot
 readback and enlarged text. Maximum RSS is the maximum individual process,
@@ -124,5 +127,7 @@ separate live Yahoo check reported a regular session. Only Node 26 was run
 locally; the existing Node 22/24/26 CI matrix remains intact.
 
 Watchlist sparklines, a command palette and optional feature breadth remain
-deferred. The core is ready for Draft PR review with the verification limits
+deferred. The artificial light-palette capture override was removed at the user’s request;
+final screenshots and narrow-layout checks use the active dark Omarchy theme.
+Theme-token inheritance remains intact. The core is ready for Draft PR review with the verification limits
 above; it has not been merged, released or installed over the user's live plugin.
