@@ -2,6 +2,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import Quickshell.Wayland
+import qs.Commons
 import "market/ui" as MarketUi
 import "market/models/MarketModel.js" as Model
 
@@ -56,6 +57,7 @@ ShellRoot {
   Timer {
     interval:400;running:true
     onTriggered:{
+      Style.fontBaseSize=14
       var summary=root.find(detail,"window-summary")
       root.check(summary.stats.changePercent===10,"1D stats ignored selected candles")
       root.check(root.find(detail,"quote-change").text==="-1.09%","Headline daily comparison changed")
@@ -86,7 +88,17 @@ ShellRoot {
       service.single=false;service.asset="HYPE";service.range="1W";service.updateRevision++
       root.check(summary.currency==="USDC" && summary.stats.changePercent===50,"Perpetual window lost trade-close currency/return")
       root.check(root.find(detail,"window-change-amount").text.indexOf("USDC")>=0,"Window amount lost USDC units")
-      if(!root.failed)console.log("UI_PASS: selected 1D/1W/1M/1Y stats, separate daily quote/snapshot, stale/loading/missing/single history and USDC")
+    }
+  }
+  Timer {
+    interval:900;running:true
+    onTriggered:{
+      var high=root.find(detail,"window-high").parent
+      var low=root.find(detail,"window-low").parent
+      var mean=root.find(detail,"window-mean").parent
+      root.check(high.y===low.y && low.y===mean.y,"Rounded font spacing wrapped the third window statistic")
+      root.check(mean.x+mean.width<=detail.width,"Window statistic columns overflow")
+      if(!root.failed)console.log("UI_PASS: selected 1D/1W/1M/1Y stats, separate daily quote/snapshot, stale/loading/missing/single history, USDC and scaled column layout")
       Qt.quit()
     }
   }

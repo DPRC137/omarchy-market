@@ -56,12 +56,13 @@ Column {
     }
   }
   Flow {
+    id: metricFlow
     width: parent.width; spacing: Style.space(10)
     Repeater {
       model: [{ key: "high", label: "High close", value: root.stats.high }, { key: "low", label: "Low close", value: root.stats.low }, { key: "mean", label: "Average close", value: root.stats.mean }]
       Column {
         required property var modelData
-        width: root.width < Style.space(330) ? (root.width - Style.space(10)) / 2 : (root.width - Style.space(20)) / 3
+        width: Math.floor(root.width < Style.space(330) ? (root.width - metricFlow.spacing) / 2 : (root.width - metricFlow.spacing * 2) / 3)
         spacing: Style.space(4)
         Text { text: parent.modelData.label; font.family: Style.font.family; font.pixelSize: Style.font.caption; color: tokens.muted }
         Text {

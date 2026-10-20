@@ -24,8 +24,9 @@ No accounts, API keys, npm packages, or background daemons.
 
 The preview above is generated promotional artwork using actual UI captures.
 The original screenshots below are unedited native Quickshell/Quattro cards in
-the active dark theme. AAPL and BTC charts use live provider data at capture time;
-watchlist and management examples use saved provider fixtures. Prices are examples.
+the active dark theme, all captured at the same 600×800 window size. Every screen
+waits for live quotes, history and search to finish loading. Prices are examples
+from capture time.
 
 | Watchlist | Asset detail |
 | --- | --- |
@@ -37,9 +38,9 @@ watchlist and management examples use saved provider fixtures. Prices are exampl
 
 | Crypto chart | Latest equity session |
 | --- | --- |
-| <img src="docs/screenshots/v1.4.0/crypto-week.png" alt="BTC weekly trade-close chart with USDT price and selected-window statistics" width="420"> | <img src="docs/screenshots/v1.4.0/equity-closed.png" alt="TSLA latest regular-session chart with date, close statistics and expandable snapshot" width="420"> |
+| <img src="docs/screenshots/v1.4.0/crypto-week.png" alt="BTC weekly trade-close chart with USDT price and selected-window statistics" width="420"> | <img src="docs/screenshots/v1.4.0/equity-session.png" alt="TSLA latest regular-session chart with date and selected-window close statistics" width="420"> |
 
-[Full 14-image gallery and provenance](docs/screenshots/v1.4.0/README.md) ·
+[Full seven-image gallery and provenance](docs/screenshots/v1.4.0/README.md) ·
 [Redesign verification and limits](docs/NATIVE_REDESIGN.md).
 
 ## Watchlist and detail
@@ -151,6 +152,7 @@ node tests/run_ui.js ticker   # compact bar, hover, direct asset chart and rotat
 node tests/run_ui.js chart    # session axis, curve geometry and inspection
 node tests/run_ui.js window   # timeframe stats and stale/missing/single states
 node tests/capture_ui.js      # native fixture screenshots; no live requests
+node tests/capture_gallery.js # settled live gallery; identical window sizes
 node tests/run_ui.js equity   # optional live Yahoo session-chart regression
 ./scripts/live-test.sh        # optional external WebSocket connectivity
 ```

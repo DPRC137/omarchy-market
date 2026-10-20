@@ -2,12 +2,14 @@
 
 ## Current 1.4.0 gallery
 
-The [1.4.0 gallery](v1.4.0/README.md) contains 14 fresh original native captures
+The [1.4.0 gallery](v1.4.0/README.md) contains seven fresh original native captures
 of the merged interface, plus an explanatory generated marketplace preview.
 The root `preview.png` now uses that promotional card. The README gallery links
 to the current watchlist, AAPL/BTC charts, management and search captures.
-Live/fixture provenance and the distinction between promotional artwork and
-unedited originals are documented alongside them.
+All seven show fully loaded live screens at one 600×800 native window size.
+Provenance and the distinction between promotional artwork and unedited
+originals are documented alongside them. Earlier fixture, narrow and error-state
+captures remain historical test evidence below, outside the current gallery.
 
 ## Chart-window follow-up
 

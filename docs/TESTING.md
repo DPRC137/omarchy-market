@@ -130,3 +130,18 @@ MARKET_EQUITY_ASSET=AAPL MARKET_EQUITY_RANGE=1M \
 
 Its screenshot includes the real native card. It checks that the selected-window
 summary matches the actual returned history. See [chart-window evidence](CHART_WINDOWS.md).
+
+## Public gallery capture
+
+`node tests/capture_gallery.js` uses the same isolated native capture infrastructure
+with production providers and components. `grim` captures only the on-screen
+popup card at its displayed dimensions. Every view opens in a fresh temporary
+host with the same 600×800 card and 14px base font. It waits for all six example
+quotes to be current/live, the active chart to have ready history and matching
+summary, search to finish where applicable, and provider refresh work to stop.
+A further two-second settled interval precedes capture. The runner verifies that
+all seven PNGs have identical pixel dimensions. Missing history, incomplete
+quotes, provider failures or loading timeouts fail the run instead of publishing
+an incomplete image. These are optional live captures, not deterministic CI.
+Use `MARKET_CAPTURE_DIR` to choose the output directory. The installed watchlist
+and settings are untouched. See the [current gallery](screenshots/v1.4.0/README.md).

@@ -12,6 +12,8 @@
   contextual actions. Undo restores removals. Bar rotation stays optional.
 - Use the active dark Omarchy theme, responsive layouts and keyboard controls,
   including enlarged-text and narrow-window support.
+- Keep date-window buttons and statistic columns aligned when font-scaled
+  spacing rounds to whole pixels.
 
 ### Charts and statistics for the selected window
 
@@ -30,8 +32,9 @@
 ### Gallery and compatibility
 
 - Replace the old marketplace preview with an explanatory promotional image based
-  on the current UI. Publish 14 fresh original captures covering charts, watchlist,
-  Manage/search, narrow layouts and loading/unavailable/empty/single states.
+  on the current UI. Publish seven fresh live captures covering charts, watchlist,
+  Manage/search and contextual editing, all at the same window size and taken
+  after loading and refresh activity finishes.
 - Preserve existing watchlists, order, pinned ticker, rotation and widget settings.
   Include the automatic stale-feed recovery improvements from 1.3.1 for users
   upgrading from the marketplace's previous 1.3.0 snapshot.

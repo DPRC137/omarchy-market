@@ -83,7 +83,7 @@ Column {
         model: History.RANGES
         MarketAction {
           required property string modelData
-          width: (parent.width - Style.space(12)) / 4
+          width: (parent.width - parent.spacing * 3) / 4
           text: modelData; selected: root.timeframe === modelData
           Accessible.name: modelData + " price history"
           onClicked: root.timeframeSelected(modelData)
