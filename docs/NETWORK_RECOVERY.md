@@ -76,8 +76,9 @@ outside this validation. The original network trigger is not proven.
 ## Marketplace publication
 
 [Issue 12414](https://github.com/omacom/omarchy-plugin-marketplace/issues/12414)
-currently targets the older 1.4.0 commit. Its compatibility checks passed, but
-it still requires maintainer security review for the existing remote-build
-capability associated with repository installation. A clean local scan is not
-maintainer approval. This candidate needs its own exact-commit verification
-after merge; it cannot inherit the older snapshot's result.
+requests verification of the 1.4.1 update. Automated compatibility checks passed
+and the baseline reported zero findings on the released transport fix. Maintainer
+security review remains required for the existing remote-build capability
+associated with repository installation; automated checks are not approval.
+Every newer submission snapshot, including documentation or artwork updates,
+needs its own exact-commit verification and cannot inherit an older result.

@@ -3,11 +3,23 @@
 A lightweight native market watchlist and ticker for **Omarchy Quattro**.
 No accounts, API keys, npm packages, or background daemons.
 
-[**Version 1.4.0**](CHANGELOG.md#140--2026-10-21) · [Changelog](CHANGELOG.md) · [Data semantics](docs/SEMANTICS.md)
+[**Version 1.4.1**](CHANGELOG.md#141--2026-10-21) · [Changelog](CHANGELOG.md) · [Data semantics](docs/SEMANTICS.md)
 
 ![Omarchy Market: crypto, stocks and ETFs in a native desktop plugin, with session-aware charts, date-window statistics and watchlist management](preview.png)
 
-## What's new in 1.4.0
+## What's new in 1.4.1
+
+- **Reliable quote and chart recovery:** fresh HTTP connections keep retries
+  independent of stalled connections in the desktop shell.
+- **Bounded downloads:** search stops at 128 KiB and quote/history responses at
+  1 MiB while streaming, including responses without Content-Length.
+- **Qt 6.12 compatibility:** explicit shell-palette imports keep native colors
+  working with QtQuick's new Color type.
+
+Existing watchlists, pin and rotation settings are preserved. See the
+[network recovery analysis and validation](docs/NETWORK_RECOVERY.md).
+
+### Native UI highlights
 
 - **Redesigned native UI:** filter and sort a compact watchlist, browse categories,
   and keep navigation within reach while scrolling detail and Manage.
@@ -26,7 +38,8 @@ The preview above is generated promotional artwork using actual UI captures.
 The original screenshots below are unedited native Quickshell/Quattro cards in
 the active dark theme, all captured at the same 600×800 window size. Every screen
 waits for live quotes, history and search to finish loading. Prices are examples
-from capture time.
+from capture time. The gallery was captured for 1.4.0 and shows the same native
+interface included in 1.4.1; its original capture provenance is retained.
 
 | Watchlist | Asset detail |
 | --- | --- |
@@ -94,7 +107,7 @@ omarchy-shell shell rescanPlugins
 omarchy plugin enable io.github.dpr.omarchy-market
 ```
 
-### Upgrading to 1.4.0
+### Upgrading to 1.4.1
 
 ```bash
 omarchy plugin update io.github.dpr.omarchy-market --yes
@@ -103,8 +116,9 @@ omarchy restart shell
 
 Your watchlist, order, fixed ticker, rotation preference and existing widget
 settings are preserved. Restarting the shell loads the updated QML code.
-Prices now retain their explicit source currency and instrument type; see the
-[1.4.0 changelog](CHANGELOG.md#140--2026-10-21) for the behavior changes.
+This update includes fresh HTTP recovery and streamed response limits, together
+with the native charts and date-window statistics introduced in 1.4.0. See the
+[1.4.1 changelog](CHANGELOG.md#141--2026-10-21) for the release details.
 
 Remove with `omarchy plugin remove io.github.dpr.omarchy-market`.
 
