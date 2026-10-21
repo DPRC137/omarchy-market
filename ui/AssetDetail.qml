@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Shell
 import qs.Ui
 import "../models/MarketModel.js" as MarketModel
 import "../models/History.js" as History
@@ -31,7 +32,7 @@ Column {
     Text {
       objectName: "detail-ticker"; width: parent.width
       text: root.asset; textFormat: Text.PlainText; elide: Text.ElideRight
-      font.family: Style.font.family; font.pixelSize: Style.font.body * 1.35; font.bold: true; color: Color.foreground
+      font.family: Style.font.family; font.pixelSize: Style.font.body * 1.35; font.bold: true; color: Shell.Color.foreground
     }
     Text {
       width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
@@ -48,7 +49,7 @@ Column {
         width: Math.min(implicitWidth, parent.width); elide: Text.ElideRight
         text: MarketModel.formatPrice(root.quote.price, undefined, root.quote.currency, !root.isStock)
         Accessible.name: MarketModel.formatPrice(root.quote.price, undefined, root.quote.currency)
-        font.family: Style.font.family; font.pixelSize: Style.font.body * 2.6; font.weight: Font.DemiBold; color: Color.foreground
+        font.family: Style.font.family; font.pixelSize: Style.font.body * 2.6; font.weight: Font.DemiBold; color: Shell.Color.foreground
       }
       Text {
         objectName: "detail-currency"; height: price.height; verticalAlignment: Text.AlignVCenter
@@ -131,7 +132,7 @@ Column {
           width: root.width < Style.space(330) ? (root.width - Style.space(10)) / 2 : (root.width - Style.space(20)) / 3
           spacing: Style.space(4)
           Text { text: parent.modelData.label; font.family: Style.font.family; font.pixelSize: Style.font.caption; color: tokens.muted }
-          Text { width: parent.width; wrapMode: Text.Wrap; text: parent.modelData.value; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; color: Color.foreground }
+          Text { width: parent.width; wrapMode: Text.Wrap; text: parent.modelData.value; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; color: Shell.Color.foreground }
         }
       }
     }

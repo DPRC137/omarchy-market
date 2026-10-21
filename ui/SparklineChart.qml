@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Shell
 import qs.Ui
 import "../models/MarketModel.js" as MarketModel
 import "../models/ChartGeometry.js" as ChartGeometry
@@ -15,7 +16,7 @@ Item {
   property string emptyText: "No history available"
   property color positiveColor: tokens.positive
   property color negativeColor: tokens.negative
-  readonly property color strokeColor: samples.length < 2 ? Color.foreground : isPositive ? positiveColor : negativeColor
+  readonly property color strokeColor: samples.length < 2 ? Shell.Color.foreground : isPositive ? positiveColor : negativeColor
   property var samples: []
   property string dataKey: ""
   readonly property var numericPoints: samples.map(function(p) { return p.close })
@@ -152,11 +153,11 @@ Item {
   }
   Rectangle {
     visible:root.hovered; x:root.plotLeft; y:root.hoverY
-    width:root.plotRight-root.plotLeft; height:1; color:Util.alpha(Color.foreground,0.35)
+    width:root.plotRight-root.plotLeft; height:1; color:Util.alpha(Shell.Color.foreground,0.35)
   }
   Rectangle {
     anchors.fill: parent; color: "transparent"; radius: Style.space(4)
-    border.width: root.activeFocus ? 1 : 0; border.color: Color.accent
+    border.width: root.activeFocus ? 1 : 0; border.color: Shell.Color.accent
   }
   Text {
     anchors.centerIn: parent; width: parent.width - Style.space(24)
@@ -165,18 +166,18 @@ Item {
   }
   Rectangle {
     visible: root.hovered; x: root.hoverX; y: root.plotTop
-    width: 1; height: Math.max(0, root.plotBottom - root.plotTop); color: Util.alpha(Color.foreground, 0.35)
+    width: 1; height: Math.max(0, root.plotBottom - root.plotTop); color: Util.alpha(Shell.Color.foreground, 0.35)
   }
   Rectangle {
     visible: root.hovered; x: root.hoverX - width / 2; y: root.hoverY - height / 2
     width: Style.space(7); height: width; radius: width / 2; color: root.strokeColor
-    border.width: 1; border.color: Color.background
+    border.width: 1; border.color: Shell.Color.background
   }
   Text {
     x: Style.space(5); y: Style.space(6); width: parent.width - Style.space(10)
     visible: root.hoverCandle !== null
     text: root.hoverCandle ? root.formatCandleTime(root.hoverCandle.time) + "  ·  " + MarketModel.formatPrice(root.hoverCandle.close, undefined, root.currency) : ""
-    elide: Text.ElideRight; font.family: Style.font.family; font.pixelSize: Style.font.caption; color: Color.foreground
+    elide: Text.ElideRight; font.family: Style.font.family; font.pixelSize: Style.font.caption; color: Shell.Color.foreground
   }
   Row {
     anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom

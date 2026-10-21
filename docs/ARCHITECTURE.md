@@ -23,9 +23,15 @@ There is no browser UI, external backend, framework replacement or npm package.
   eight-second deadlines, at most two retries with 4s/8s backoff for transient
   HTTP/network/deadline failures. A visible chart can displace a background job;
   displaced/rejected work is notified. Response callbacks are finalized once.
-- `providers/HttpClient.qml`: actual QML XHR adapter and explicit Qt Timer polling
-  scheduler deadlines. Enforces response-size ceilings before parsing. Queues
-  are destroyed with their owners and all active XHRs are aborted.
+- `providers/HttpClient.qml`: production scheduler adapter and explicit Qt Timer
+  polling deadlines. `FreshRequest.qml` owns a one-shot Node HTTP worker per
+  active request. Its connection is never shared with the desktop's Qt pool.
+  `scripts/http_request.js` counts incoming bytes before retaining chunks or
+  parsing JSON (128 KiB for search; 1 MiB otherwise), rejects oversized declared
+  lengths, bounds request bodies and elapsed time, and keeps TLS verification
+  enabled. It requests identity encoding and does not follow redirects.
+  Completion, cancellation, parent EOF and owner destruction close the worker
+  and its connection. No additional npm or runtime dependency is required.
 - Named Binance/Coinbase/Hyperliquid providers use `CryptoProvider.qml` for shared
   subscription/HTTP/process lifetime. Only watched provider-supported symbols
   are subscribed. Binance/Coinbase each own one stdio WebSocket bridge;
@@ -70,9 +76,10 @@ baseline; desktop testing here used Quickshell 0.3.1.
 
 Verified provider/API assumptions against:
 
-- [Qt QML XHR](https://doc.qt.io/qt-6/qml-qtqml-xmlhttprequest.html): partial XHR
-  Level 1, with abort and readyState callbacks. Browser timeout/onerror APIs are
-  deliberately not used; Qt timers enforce deadlines.
+- [Node HTTP](https://nodejs.org/api/http.html): streamed responses and
+  `agent: false` isolate requests; the native scheduler also enforces deadlines.
+- [Qt QML XHR](https://doc.qt.io/qt-6/qml-qtqml-xmlhttprequest.html) is used only
+  by the native fault fixture to reproduce a stalled shared HTTP/2 connection.
 - [Node WebSocket](https://nodejs.org/api/globals.html#class-websocket).
 - [Binance market endpoints](https://developers.binance.com/en/docs/catalog/core-trading-spot-trading/api/rest-api/market): explicit kline interval and time bounds;
   REST tickers and WebSocket tickers use different field spellings.

@@ -1,15 +1,15 @@
 import QtQuick
-import qs.Commons
+import qs.Commons as Shell
 
 // Palette roles follow the shell live, including text-size and theme changes.
 QtObject {
   id: root
-  readonly property color surface: Color.popups.background
-  readonly property color foreground: Color.foreground
-  readonly property color muted: readable(Color.muted)
-  readonly property color accent: readable(Color.accent)
+  readonly property color surface: Shell.Color.popups.background
+  readonly property color foreground: Shell.Color.foreground
+  readonly property color muted: readable(Shell.Color.muted)
+  readonly property color accent: readable(Shell.Color.accent)
   readonly property color positive: accent
-  readonly property color negative: readable(Color.urgent)
+  readonly property color negative: readable(Shell.Color.urgent)
   readonly property color divider: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.16)
   readonly property color hover: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.07)
   function linear(v) { return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
