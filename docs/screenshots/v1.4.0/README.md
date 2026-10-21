@@ -7,6 +7,7 @@ watchlist without accounts or API keys.
 All seven original screenshots show fully loaded live screens at the same
 **600×800 native window size** (1200×1600 PNGs on the capture display), with the
 same font size and dark theme. Refresh and search activity finished before capture.
+These originals were captured for 1.4.0 and show the same interface in 1.4.1.
 
 ## Explanatory marketplace preview
 
@@ -15,6 +16,8 @@ same font size and dark theme. Refresh and search activity finished before captu
 The root `preview.png` is generated promotional artwork composed from the
 original chart and watchlist captures below. Its surrounding text explains the app; it is not
 an additional application screen. The originals here preserve the actual UI.
+The promotional caption omits a release number; the root README identifies the
+current version, so patch releases do not date the artwork.
 
 ## Watchlist and equity detail
 
