@@ -51,15 +51,25 @@ ShellRoot {
   }
   function done() {
     finished++
-    if (finished === 6) {
+    if (finished === 8) {
       check(!service.provider("binance").childProcessRunning, "Binance process remained after stock-only migration")
       check(!service.provider("coinbase").childProcessRunning, "Coinbase process remained after stock-only migration")
-      if (!failed) console.log("NATIVE_PASS: QML service, forced quote refresh and freshness recovery, stock-only cleanup, ordered undo, settings, search errors, HTTP parse/failure/Qt timeout/cancellation, empty-session recovery")
+      if (!failed) console.log("NATIVE_PASS: QML service, forced quote refresh and freshness recovery, stock-only cleanup, ordered undo, settings, search errors, HTTP parse/failure/Qt timeout/cancellation, streamed search/data ceilings, empty-session recovery")
       Qt.quit()
     }
   }
   MarketService { id: service }
   HttpClient { id: http }
+  HttpClient { id: boundedData }
+  HttpClient { id: boundedSearch }
+  function checkBounded(client, name, limit) {
+    var request = { key: name, url: baseUrl + "/stream/" + name }
+    if (limit) request.maxBytes = limit
+    client.enqueue(request, function(result) {
+      root.check(result.error === "Response too large" && !result.data, "Unbounded streamed payload reached parsing: " + name)
+      root.done()
+    })
+  }
   Connections {
     target: service
     function onCandlesUpdated(asset, range, candles) {
@@ -105,6 +115,8 @@ ShellRoot {
       }, Date.now, 1200, 24)
       service.fetchCandles("TSLA", "1D", true)
       service.searchYahooMarkets("apple", function(results, error) { root.check(results.length === 0 && error !== "", "search failure hidden as no results"); root.done() })
+      root.checkBounded(boundedData, "data", 0)
+      root.checkBounded(boundedSearch, "search", 131072)
       http.enqueue({ key: "ok", url: root.baseUrl + "/ok" }, function(result) { root.check(result.data && result.data.value === 42, "native JSON response"); root.done() })
       http.enqueue({ key: "json", url: root.baseUrl + "/invalid" }, function(result) { root.check(!!result.error, "invalid JSON accepted"); root.done() })
       http.enqueue({ key: "large", url: root.baseUrl + "/large", maxBytes: 20 }, function(result) { root.check(!!result.error, "size bound ignored"); root.done() })

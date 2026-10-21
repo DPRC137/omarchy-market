@@ -4,6 +4,7 @@ import Quickshell
 import "market" as Market
 import "market/models/MarketModel.js" as Model
 import qs.Commons
+import qs.Commons as Shell
 
 // Deterministic visual evidence: production components, captured provider fixtures.
 ShellRoot {
@@ -65,7 +66,7 @@ ShellRoot {
     property string position: "top"
     property bool vertical: false
     property int barSize: 30
-    property color barForeground: Color.foreground
+    property color barForeground: Shell.Color.foreground
     property var activePopout: null
     function requestPopout(item) {activePopout=item}
     function releasePopout(item) {activePopout=null}

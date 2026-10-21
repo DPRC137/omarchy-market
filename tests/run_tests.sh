@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 for file in scripts/*.js tests/*.js; do node --check "$file"; done
-for test in test_models test_fixtures test_runtime_faults test_yahoo_scheduler test_history test_equity_sessions test_subscriptions test_recovery test_watchlist_view test_history_stats test_chart_geometry; do
+for test in test_models test_fixtures test_runtime_faults test_yahoo_scheduler test_history test_equity_sessions test_subscriptions test_recovery test_watchlist_view test_history_stats test_chart_geometry test_http_request; do
   node "tests/$test.js"
 done
 for script in tests/*.sh scripts/*.sh; do bash -n "$script"; done

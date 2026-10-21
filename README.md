@@ -129,6 +129,9 @@ once per provider every 15 seconds. Refresh replaces outstanding quote requests
 and reconnects streams, with a 30-second reconnect cooldown. The button shows
 “Refreshing…” while requests are pending. Provider outages can still delay new data;
 the last received values stay labelled stale until an update succeeds.
+HTTP requests own fresh connections, so a broken connection in the shared
+shell cannot trap market retries. Search responses stop at 128 KiB; quote and
+history responses stop at 1 MiB, including chunked responses without a length.
 
 Existing `shell.json` widget settings remain supported:
 
@@ -146,7 +149,9 @@ required. [Architecture and persistence](docs/ARCHITECTURE.md).
 ```bash
 bash tests/run_tests.sh       # portable production-module checks, also run in CI
 bash tests/lint_qml.sh        # Qt/Quattro imports required
-node tests/run_native.js      # real QML XHR, deadlines, settings restart, cleanup
+node tests/run_native.js      # real HTTP, streamed byte limits, settings restart, cleanup
+node tests/run_http_recovery.js # native HTTP/2 outage/startup recovery (Qt dev tools, c++, openssl)
+node tests/run_security.js    # hostile remote text; zero rich-text resource loads
 node tests/run_ui.js          # real Wayland popup, pointer and keyboard checks
 node tests/run_ui.js ticker   # compact bar, hover, direct asset chart and rotation
 node tests/run_ui.js chart    # session axis, curve geometry and inspection

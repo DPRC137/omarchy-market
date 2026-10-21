@@ -145,3 +145,23 @@ quotes, provider failures or loading timeouts fail the run instead of publishing
 an incomplete image. These are optional live captures, not deterministic CI.
 Use `MARKET_CAPTURE_DIR` to choose the output directory. The installed watchlist
 and settings are untouched. See the [current gallery](screenshots/v1.4.0/README.md).
+
+## HTTP recovery and marketplace security follow-up
+
+See [failure analysis and maintainer requirements](NETWORK_RECOVERY.md).
+`node tests/run_http_recovery.js` requires Quickshell, Qt development tools
+(including moc), a C++ compiler, pkg-config and openssl. It builds a temporary
+test-only trust module and certificate; it never changes system trust. A local
+proxy silently stops forwarding an established Qt HTTP/2 connection while
+accepting new connections. The production client must complete GET/POST work,
+recover from unavailable startup, survive cancellation and leave no sockets
+after shutdown. An optional plugin-directory argument permits before/after
+comparison against an unchanged release.
+
+`node tests/run_native.js` now checks that search/data streams without
+Content-Length are closed before the full 2 MiB response is sent.
+`node tests/run_security.js` loads hostile image markup into actual search,
+watchlist, detail and diagnostic components and checks PlainText plus zero
+requests to a loopback image URL. Portable CI also runs the actual HTTP worker
+against malformed JSON, status errors, declared/chunked byte limits, deadlines,
+disconnections and parent EOF. None of these tests rewrites installed settings.

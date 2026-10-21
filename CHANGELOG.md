@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.1 — 2026-10-21
+
+- Recover quotes and charts independently of stalled HTTP connections in the desktop shell. Requests use bounded one-shot workers with fresh connections, deadlines and cancellation; existing retry limits and provider spacing remain intact.
+- Enforce search (128 KiB) and quote/history (1 MiB) limits while streaming, including responses without Content-Length. Workers stop downloading before parsing oversized responses.
+- Identify HTTP requests as Omarchy Market; Yahoo may reject requests without a User-Agent.
+- Resolve the shell palette explicitly to avoid the new QtQuick.Color type in Qt 6.12.
+- Add native regressions for a black-holed HTTP/2 session, offline startup, streaming bounds, cancellation and hostile remote text.
+
 ## 1.4.0 — 2026-10-21
 
 ### A new native interface
