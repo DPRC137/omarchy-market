@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.1 — Unreleased
+## 1.4.1 — 2026-10-21
 
 - Recover quotes and charts independently of stalled HTTP connections in the desktop shell. Requests use bounded one-shot workers with fresh connections, deadlines and cancellation; existing retry limits and provider spacing remain intact.
 - Enforce search (128 KiB) and quote/history (1 MiB) limits while streaming, including responses without Content-Length. Workers stop downloading before parsing oversized responses.
