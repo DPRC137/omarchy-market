@@ -95,19 +95,24 @@ Item {
       }
     })
   }
+  function consumeBridgeLine(line) {
+    // The helper guarantees ASCII records <= 2048 bytes including newline.
+    // Reject an invalid record before JSON parsing as an independent guard.
+    if (!active || typeof line !== "string" || line.length >= 2048) return
+    if (/[^\x20-\x7e]/.test(line)) return
+    try {
+      var msg = JSON.parse(line)
+      if (!msg || msg.provider !== providerId) return
+      if (msg.type === "status" && ["CONNECTING", "CONNECTED", "DISCONNECTED", "RECONNECTING", "STALE"].indexOf(msg.status) >= 0) status = msg.status
+      if (msg.type === "ticker" && msg.raw && typeof msg.raw === "object") accept(providerId === "binance" ? MarketModel.normalizeBinanceTicker(msg.raw, Date.now()) : MarketModel.normalizeCoinbaseTicker(msg.raw, Date.now()))
+    } catch (e) {}
+  }
   Process {
     id: bridge
     command: ["node", decodeURIComponent(Qt.resolvedUrl("../scripts/ws_bridge.js").toString().replace("file://", "")), root.providerId, root.targetAssets.join(",")]
     stdout: SplitParser {
       splitMarker: "\n"
-      onRead: function(line) {
-        try {
-          var msg = JSON.parse(line)
-          if (!root.active) return
-          if (msg.type === "status") root.status = msg.status
-          if (msg.type === "ticker") root.accept(root.providerId === "binance" ? MarketModel.normalizeBinanceTicker(msg.raw, Date.now()) : MarketModel.normalizeCoinbaseTicker(msg.raw, Date.now()))
-        } catch (e) {}
-      }
+      onRead: function(line) { root.consumeBridgeLine(line) }
     }
     onExited: { if (root.active) { root.status = "RECONNECTING"; restartTimer.restart() } }
   }

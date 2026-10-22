@@ -5,7 +5,8 @@
 `bash tests/run_tests.sh` runs production JavaScript functions from MarketModel,
 RequestQueue and History with deterministic clocks/transports, the actual bridge
 script with a fake WebSocket runtime, JS syntax, shell syntax and manifest entry
-checks. GitHub Actions runs this on Node 22/24/26 with no npm installation.
+checks, plus the actual helper and bundled receiver against local WebSocket
+peers (`test_ws_bounds.js`). GitHub Actions runs this on Node 22/24/26 with no npm installation.
 
 Material cases include elapsed freshness and recovery, closed-market status,
 null metrics, currency/share/base-volume units, international currency migration,
@@ -25,6 +26,15 @@ processes or changing the user's enabled plugins. The historical
 `test_v121_regressions.js` entry point delegates to the production history tests.
 
 ## Native checks (separate from CI)
+
+- `node tests/run_ws_native.js`: real CryptoProvider and child helper with private
+  config/runtime directories. A test-only preload routes the hard-coded provider
+  endpoint to a local peer; production has no URL override. An advertised 2 MiB
+  frame is rejected without its body, then the helper reconnects and projects an
+  8 KiB valid ticker into a small IPC record accepted by the native normalizer.
+  It checks pre-parse size/ASCII/provider guards, quote currency/stat semantics,
+  unwatched symbols, provider disable and actual process/socket cleanup.
+
 
 - `bash tests/lint_qml.sh`: real Qt qmllint with Quattro module paths. Dynamic
   host QObject members, unqualified dynamic delegates and the Quickshell exit

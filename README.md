@@ -1,13 +1,24 @@
 # Omarchy Market (`io.github.dpr.omarchy-market`)
 
 A lightweight native market watchlist and ticker for **Omarchy Quattro**.
-No accounts, API keys, npm packages, or background daemons.
+No accounts, API keys, npm install, or background daemons.
 
-[**Version 1.4.1**](CHANGELOG.md#141--2026-10-21) · [Changelog](CHANGELOG.md) · [Data semantics](docs/SEMANTICS.md)
+[**Version 1.4.2**](CHANGELOG.md#142--2026-10-22) · [Changelog](CHANGELOG.md) · [Data semantics](docs/SEMANTICS.md)
 
 ![Omarchy Market: crypto, stocks and ETFs in a native desktop plugin, with session-aware charts, date-window statistics and watchlist management](preview.png)
 
-## What's new in 1.4.1
+## What's new in 1.4.2
+
+- **Bounded WebSocket input:** ticker messages stop at 16 KiB before assembly
+  and JSON parsing, including oversized fragmented messages.
+- **Small, bounded shell messages:** only watched price/stat fields cross into
+  the desktop shell; unused remote fields are discarded and output is bounded.
+- **No installation step added:** the pinned, MIT-licensed ws client is bundled
+  with optional native addons and compression disabled.
+
+[WebSocket security limits and regressions](docs/WEBSOCKET_SECURITY.md).
+
+### Included reliability fixes
 
 - **Reliable quote and chart recovery:** fresh HTTP connections keep retries
   independent of stalled connections in the desktop shell.
@@ -39,7 +50,7 @@ The original screenshots below are unedited native Quickshell/Quattro cards in
 the active dark theme, all captured at the same 600×800 window size. Every screen
 waits for live quotes, history and search to finish loading. Prices are examples
 from capture time. The gallery was captured for 1.4.0 and shows the same native
-interface included in 1.4.1; its original capture provenance is retained.
+interface included in the current 1.4.x release; its original capture provenance is retained.
 
 | Watchlist | Asset detail |
 | --- | --- |
@@ -85,7 +96,7 @@ See [exact semantics](docs/SEMANTICS.md).
 ## Requirements
 
 - Omarchy Quattro, Quickshell **0.3+**, Qt **6.8+**.
-- Node.js **22.4+** with native WebSocket enabled (24/26 also supported).
+- Node.js **22.4+** (24/26 also supported).
 - Public internet access to provider APIs. Yahoo's endpoints are unofficial;
   availability, limits, delays and coverage may change without notice.
 
@@ -107,7 +118,7 @@ omarchy-shell shell rescanPlugins
 omarchy plugin enable io.github.dpr.omarchy-market
 ```
 
-### Upgrading to 1.4.1
+### Upgrading to 1.4.2
 
 ```bash
 omarchy plugin update io.github.dpr.omarchy-market --yes
@@ -116,9 +127,10 @@ omarchy restart shell
 
 Your watchlist, order, fixed ticker, rotation preference and existing widget
 settings are preserved. Restarting the shell loads the updated QML code.
-This update includes fresh HTTP recovery and streamed response limits, together
+This update includes bounded WebSocket messages, fresh HTTP recovery and streamed
+response limits, together
 with the native charts and date-window statistics introduced in 1.4.0. See the
-[1.4.1 changelog](CHANGELOG.md#141--2026-10-21) for the release details.
+[1.4.2 changelog](CHANGELOG.md#142--2026-10-22) for the release details.
 
 Remove with `omarchy plugin remove io.github.dpr.omarchy-market`.
 
@@ -166,6 +178,7 @@ bash tests/lint_qml.sh        # Qt/Quattro imports required
 node tests/run_native.js      # real HTTP, streamed byte limits, settings restart, cleanup
 node tests/run_http_recovery.js # native HTTP/2 outage/startup recovery (Qt dev tools, c++, openssl)
 node tests/run_security.js    # hostile remote text; zero rich-text resource loads
+node tests/run_ws_native.js   # real WebSocket helper, byte budgets and native IPC cleanup
 node tests/run_ui.js          # real Wayland popup, pointer and keyboard checks
 node tests/run_ui.js ticker   # compact bar, hover, direct asset chart and rotation
 node tests/run_ui.js chart    # session axis, curve geometry and inspection
@@ -185,7 +198,8 @@ that the native UI works.
 Omarchy Market is [MIT licensed](LICENSE). The native chart adapts the Steffen
 curve helper from TradingView Lightweight Charts under Apache-2.0; its
 [license, notice and source attribution](third_party/lightweight-charts/README.md)
-are included. No TradingView service or embedded charting website is required.
+are included. The bundled [ws client and MIT license](third_party/ws/README.md)
+provide bounded WebSocket reception. No TradingView service or embedded charting website is required.
 
 Changes reach the protected `master` branch through checked pull requests.
 See [maintainer workflow](docs/MAINTAINING.md).

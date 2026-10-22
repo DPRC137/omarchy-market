@@ -43,7 +43,9 @@ There is no browser UI, external backend, framework replacement or npm package.
   1200ms minimum spacing. Polls every minute if any watched stock is open or
   unknown, otherwise every five minutes. Search remains on-demand even without
   watched equities. Stale search replies are ignored and failures are explicit.
-- `scripts/ws_bridge.js`: native Node WebSocket, subscription deltas, reconnect
+- `scripts/ws_bridge.js`: pinned, bundled ws client with 16 KiB ticker message
+  limits before assembly, bounded scalar projection/IPC and stdout backpressure
+  shutdown; see [WebSocket security](WEBSOCKET_SECURITY.md). Subscription deltas, reconnect
   watchdog/backoff, ten-second connection deadline and explicit reconnect IPC.
   The watchdog schedules recovery directly without waiting for a close event.
   Empty subscriptions open no socket. Old sockets and timers
@@ -69,9 +71,9 @@ persists dynamic currency and exchange metadata. Unrelated shell.json values
 
 ## Runtime assumptions and provider references
 
-Require Node **22+** with native WebSocket enabled (stable since 22.4); Node 20
-requires a flag and is no longer advertised as working out of the box. The bridge
-fails clearly if WebSocket is absent. Quickshell 0.3+ / Qt 6.8+ remain the native
+Require Node **22.4+**. The WebSocket client is bundled with its MIT license;
+installation needs no npm, compiler or native addons. Compression is disabled
+and TLS certificate verification remains enabled. Quickshell 0.3+ / Qt 6.8+ remain the native
 baseline; desktop testing here used Quickshell 0.3.1.
 
 Verified provider/API assumptions against:
@@ -80,7 +82,8 @@ Verified provider/API assumptions against:
   `agent: false` isolate requests; the native scheduler also enforces deadlines.
 - [Qt QML XHR](https://doc.qt.io/qt-6/qml-qtqml-xmlhttprequest.html) is used only
   by the native fault fixture to reproduce a stalled shared HTTP/2 connection.
-- [Node WebSocket](https://nodejs.org/api/globals.html#class-websocket).
+- [ws client receive limits](https://github.com/websockets/ws/blob/8.22.0/doc/ws.md)
+  and [pinned source provenance](../third_party/ws/README.md).
 - [Binance market endpoints](https://developers.binance.com/en/docs/catalog/core-trading-spot-trading/api/rest-api/market): explicit kline interval and time bounds;
   REST tickers and WebSocket tickers use different field spellings.
 - [Hyperliquid contract units](https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications): USDC-priced HYPE versus USDT-priced other supported crypto perps, all USDC collateral.
