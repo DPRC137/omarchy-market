@@ -1,0 +1,21 @@
+{
+  "version": "8.22.0",
+  "gitHead": "297202cdae9b0590629821373b3b679c407f3431",
+  "tarball": "https://registry.npmjs.org/ws/-/ws-8.22.0.tgz",
+  "integrity": "sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==",
+  "files": {
+    "LICENSE": "2b29dcfe0d6471f7e8c92c5fb38c9f93edee10330937055440192f1832b1ecef",
+    "lib/buffer-util.js": "8b0a45739132f82e25ea13163780abf547ccfe989267f3eb7abb475beec92da3",
+    "lib/constants.js": "391e823142b8b370e55a2fd32b022deaf03b8415c56000009674ebc86a0b4f86",
+    "lib/event-target.js": "c45d3c6e12d170c860c0c3f1a050aa0f864d9806632b609a1e607d675aba128c",
+    "lib/extension.js": "852564f0f6b460287043803eae732666fb5610f676874354fc89f06aa4e986ed",
+    "lib/limiter.js": "e0469d4b83f6ba764b15f80e1766b75c136fbff68f048f4c050f0b1c7f065f69",
+    "lib/permessage-deflate.js": "16a91536988a53c23047ee5882392068728a839a244178c3b09b8c54982f58b0",
+    "lib/receiver.js": "a6ada33c9a2d54eaf595824b821ea89ca2c6395f89aa06755c52142148274884",
+    "lib/sender.js": "d0791d30c3defd44dcabbddb879a901c757993fea2c00a7ffea01d53b23b4b77",
+    "lib/subprotocol.js": "be3f6323d6f549568577dcba9004c1479d95c65a7abb0fe0c582875b9fac0b7c",
+    "lib/validation.js": "41ce8e83d0d434132e1704895fedb91f6703a701b42d91c80954ab29b2845593",
+    "lib/websocket.js": "7ccf305925f0cdb74e06b75b4c84de134b1bd771a220ef409b24520def08128f",
+    "package.json": "c1ef91ca04eb4754c011c5f0e7638b5078ff71104fada400c44ac761cf93e0b1"
+  }
+}

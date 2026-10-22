@@ -7,7 +7,7 @@ watchlist without accounts or API keys.
 All seven original screenshots show fully loaded live screens at the same
 **600×800 native window size** (1200×1600 PNGs on the capture display), with the
 same font size and dark theme. Refresh and search activity finished before capture.
-These originals were captured for 1.4.0 and show the same interface in 1.4.1.
+These originals were captured for 1.4.0 and show the same interface in later 1.4.x releases.
 
 ## Explanatory marketplace preview
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.2 — 2026-10-22
+
+- Bound Binance/Coinbase WebSocket messages to 16 KiB before message assembly and JSON parsing, including fragmented and header-only oversized messages. Limit fragments/chunks and disable compression.
+- Forward only watched ticker fields with short scalar values; bound IPC records to 2 KiB and pending stdout to 16 KiB. Reject oversized, non-ASCII and mismatched-provider lines before shell parsing.
+- Bundle the integrity-pinned, MIT-licensed ws 8.22.0 client with native addon resolution disabled; no npm install or runtime download is required.
+- Add real bridge and native provider regressions for oversized payloads, fragmented overflow, malformed frames, reconnects and shutdown; retain quote, currency and date-window semantics.
+
 ## 1.4.1 — 2026-10-21
 
 - Recover quotes and charts independently of stalled HTTP connections in the desktop shell. Requests use bounded one-shot workers with fresh connections, deadlines and cancellation; existing retry limits and provider spacing remain intact.

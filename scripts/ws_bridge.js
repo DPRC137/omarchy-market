@@ -1,16 +1,34 @@
 #!/usr/bin/env node
 /**
  * ws_bridge.js - Hardened stdio WebSocket line bridge for Omarchy Market
- * Uses native WHATWG WebSocket (Node.js standard library, zero dependencies)
+ * Bundled ws client enforces receive budgets before message assembly.
  */
 
 "use strict";
 
 const readline = require("readline");
 
-if (typeof WebSocket !== "function") {
-  console.error("Omarchy Market requires Node.js 22+ with native WebSocket enabled.");
-  process.exit(1);
+// Never resolve optional native addons from ambient node_modules paths.
+process.env.WS_NO_BUFFER_UTIL = "1";
+process.env.WS_NO_UTF_8_VALIDATE = "1";
+const WebSocket = require("../third_party/ws/lib/websocket");
+const Protocol = require("./ws_protocol");
+
+function socketFor(url) {
+  const socket = new WebSocket(url, {
+    maxPayload: provider === "hyperliquid" ? 64 * 1024 : Protocol.MAX_MESSAGE_BYTES,
+    maxFragments: 32,
+    maxBufferedChunks: 64,
+    perMessageDeflate: false,
+    followRedirects: false,
+    handshakeTimeout: 10000,
+    maxHeaderSize: 8192,
+    closeTimeout: 1000
+  });
+  // terminate() during CONNECTING reports an asynchronous error after its
+  // application handlers are detached. Keep that cleanup error handled.
+  socket.on("error", () => {});
+  return socket;
 }
 
 const VALID_PROVIDERS = ["binance", "coinbase", "hyperliquid"];
@@ -37,6 +55,7 @@ function sanitizeSymbols(symbols) {
     if (!/^[A-Z0-9]{1,12}$/.test(clean) || seen.has(clean)) continue;
     seen.add(clean);
     result.push(clean);
+    if (result.length === Protocol.MAX_SYMBOLS) break;
   }
   return result;
 }
@@ -57,7 +76,12 @@ let lastMessageTime = Date.now();
 function emit(data) {
   if (isClosing) return;
   try {
-    process.stdout.write(JSON.stringify(data) + "\n");
+    const line = JSON.stringify(data) + "\n";
+    const bytes = Buffer.byteLength(line);
+    if (bytes > Protocol.MAX_LINE_BYTES) return cleanupAndExit(1);
+    if ((process.stdout.writableLength || 0) + bytes > 16384) return cleanupAndExit(0);
+    // A slow/stopped shell must not accumulate an unbounded write queue.
+    if (!process.stdout.write(line)) cleanupAndExit(0);
   } catch (e) {
     cleanupAndExit(0);
   }
@@ -114,7 +138,7 @@ function connectBinance() {
   const streams = getBinanceStreams(activeSymbols);
   const streamPath = streams.join("/");
   const url = `wss://stream.binance.com:9443/stream?streams=${streamPath}`;
-  ws = new WebSocket(url);
+  ws = socketFor(url);
 
   ws.onopen = () => {
     reconnectDelay = 1000;
@@ -125,9 +149,13 @@ function connectBinance() {
   ws.onmessage = (event) => {
     resetWatchdog();
     try {
+      if (typeof event.data !== "string" || Buffer.byteLength(event.data) > (provider === "hyperliquid" ? 65536 : Protocol.MAX_MESSAGE_BYTES)) {
+        handleClose("Invalid or oversized WebSocket message"); return;
+      }
       const payload = JSON.parse(event.data);
       if (payload && payload.data) {
-        emit({ type: "ticker", provider: "binance", raw: payload.data });
+        const message = Protocol.ticker("binance", payload.data, activeSymbols);
+        if (message) emit(message);
       }
     } catch (e) {}
   };
@@ -144,7 +172,7 @@ function getCoinbaseProducts(symbols) {
 
 function connectCoinbase() {
   const url = "wss://ws-feed.exchange.coinbase.com";
-  ws = new WebSocket(url);
+  ws = socketFor(url);
 
   ws.onopen = () => {
     reconnectDelay = 1000;
@@ -164,9 +192,13 @@ function connectCoinbase() {
   ws.onmessage = (event) => {
     resetWatchdog();
     try {
+      if (typeof event.data !== "string" || Buffer.byteLength(event.data) > (provider === "hyperliquid" ? 65536 : Protocol.MAX_MESSAGE_BYTES)) {
+        handleClose("Invalid or oversized WebSocket message"); return;
+      }
       const payload = JSON.parse(event.data);
       if (payload && payload.type === "ticker") {
-        emit({ type: "ticker", provider: "coinbase", raw: payload });
+        const message = Protocol.ticker("coinbase", payload, activeSymbols);
+        if (message) emit(message);
       }
     } catch (e) {}
   };
@@ -177,7 +209,7 @@ function connectCoinbase() {
 
 function connectHyperliquid() {
   const url = "wss://api.hyperliquid.xyz/ws";
-  ws = new WebSocket(url);
+  ws = socketFor(url);
 
   ws.onopen = () => {
     reconnectDelay = 1000;
@@ -200,9 +232,17 @@ function connectHyperliquid() {
   ws.onmessage = (event) => {
     resetWatchdog();
     try {
+      if (typeof event.data !== "string" || Buffer.byteLength(event.data) > (provider === "hyperliquid" ? 65536 : Protocol.MAX_MESSAGE_BYTES)) {
+        handleClose("Invalid or oversized WebSocket message"); return;
+      }
       const payload = JSON.parse(event.data);
       if (payload && payload.channel === "allMids" && payload.data && payload.data.mids) {
-        emit({ type: "mids", provider: "hyperliquid", mids: payload.data.mids });
+        const mids = {};
+        for (const symbol of activeSymbols) {
+          const value = Protocol.scalar(payload.data.mids[symbol]);
+          if (value !== undefined) mids[symbol] = value;
+        }
+        emit({ type: "mids", provider: "hyperliquid", mids });
       }
     } catch (e) {}
   };
@@ -287,7 +327,7 @@ function handleStdinCommand(cmdObj) {
   } else if (action === "subscribe") {
     const newSyms = symbols.filter(s => !activeSymbols.includes(s));
     if (newSyms.length > 0) {
-      activeSymbols = activeSymbols.concat(newSyms);
+      activeSymbols = sanitizeSymbols(activeSymbols.concat(newSyms));
     }
     emit({ type: "subscriptions", provider, action: "subscribe", symbols: activeSymbols.slice() });
 
@@ -366,7 +406,7 @@ rl.on("line", (line) => {
 function closeSocket() {
   if (!ws) return;
   ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
-  try { ws.close(); } catch (e) {}
+  try { ws.terminate(); } catch (e) {}
   ws = null;
 }
 
@@ -374,7 +414,7 @@ function handleClose(reason) {
   if (isClosing) return;
   clearAllTimers();
   closeSocket();
-  emit({ type: "status", provider, status: "RECONNECTING", reason: String(reason || "") });
+  emit({ type: "status", provider, status: "RECONNECTING", reason: String(reason || "").replace(/[^\x20-\x7e]/g, "?").slice(0, 160) });
 
   const jitter = Math.floor(Math.random() * 1000);
   const delay = Math.min(30000, reconnectDelay) + jitter;
@@ -395,7 +435,7 @@ function cleanupAndExit(code = 0) {
       ws.onmessage = null;
       ws.onclose = null;
       ws.onerror = null;
-      ws.close();
+      ws.terminate();
     } catch (e) {}
     ws = null;
   }

@@ -3,7 +3,7 @@
 ## Current native UI gallery
 
 The [1.4.0 gallery](v1.4.0/README.md) contains seven fresh original native captures
-of the native interface included unchanged in 1.4.1, plus an explanatory
+of the native interface included unchanged in later 1.4.x releases, plus an explanatory
 generated marketplace preview.
 The root `preview.png` now uses that promotional card. The README gallery links
 to the current watchlist, AAPL/BTC charts, management and search captures.

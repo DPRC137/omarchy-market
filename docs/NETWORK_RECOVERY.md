@@ -76,7 +76,8 @@ outside this validation. The original network trigger is not proven.
 ## Marketplace publication
 
 [Issue 12414](https://github.com/omacom/omarchy-plugin-marketplace/issues/12414)
-requests verification of the 1.4.1 update. Automated compatibility checks passed
+requests verification of the 1.4.2 update, including the subsequent
+[WebSocket message bounds](WEBSOCKET_SECURITY.md). Automated compatibility checks passed
 and the baseline reported zero findings on the released transport fix. Maintainer
 security review remains required for the existing remote-build capability
 associated with repository installation; automated checks are not approval.
