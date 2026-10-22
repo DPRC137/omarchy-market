@@ -1,7 +1,7 @@
 # Omarchy Market (`io.github.dpr.omarchy-market`)
 
 A lightweight native market watchlist and ticker for **Omarchy Quattro**.
-No accounts, API keys, npm install, or background daemons.
+No accounts, API keys or background daemons. The WebSocket client ships in the checkout.
 
 [**Version 1.4.2**](CHANGELOG.md#142--2026-10-22) · [Changelog](CHANGELOG.md) · [Data semantics](docs/SEMANTICS.md)
 
